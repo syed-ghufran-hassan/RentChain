@@ -10,6 +10,7 @@ contract RentalManagementTest is Test {
     address owner = address(0x123);
     address tenant = address(0x456);
 
+
     struct Property {
         address owner;
         string name;
@@ -17,6 +18,7 @@ contract RentalManagementTest is Test {
         uint256 rentPerMonth;
         bool isRented;
     }
+
 
     function setUp() public {
         rentalManagement = new RentalManagement();
@@ -74,6 +76,7 @@ contract RentalManagementTest is Test {
         rentalManagement.rentProperty{value: 0.5 ether}(0, block.timestamp, block.timestamp + 30 days); // Not enough funds
         vm.stopPrank();
     }
+
 
     function testRentPropertyWithInsufficientFunds() public {
         // Attempt to rent a property with insufficient Ether to cover both rent and deposit.
@@ -216,5 +219,6 @@ contract RentalManagementTest is Test {
     // Trying to register again with the same msg.sender should fail
     rentalManagement.registerProperty("Luxury Apartment", "New York", 1 ether);
 }
+
 
 }
