@@ -3,6 +3,8 @@ pragma solidity ^0.8.0;
 
 contract RentalManagement {
     // Struct to store property details
+
+
     struct Property {
         address owner; // Owner of the property
         string name; // Name of the property
@@ -66,13 +68,21 @@ contract RentalManagement {
 
     // Function to register a new property
     // Takes property details such as name, location, and rent per month as input
+
+         mapping(address => bool) public isOwner; // Mapping to track whether an address is a property owner
+mapping(address => bool) public isTenant; // Mapping to track whether an address is a tenant
+
+
     function registerProperty(
         string memory _name,
         string memory _location,
         uint256 _rentPerMonth
     ) public {
+
+         require(!isOwner[msg.sender], "You are already a property owner");
         // Add a new property to the properties array
         properties.push(Property(msg.sender, _name, _location, _rentPerMonth, false));
+        isOwner[msg.sender] = true;
 
         // Emit an event to log the property registration
         uint256 propertyId = properties.length - 1;
@@ -137,4 +147,7 @@ contract RentalManagement {
     function viewProperties() public view returns (Property[] memory) {
         return properties;
     }
+
+
+
 }
