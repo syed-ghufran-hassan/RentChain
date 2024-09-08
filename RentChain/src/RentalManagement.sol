@@ -12,6 +12,16 @@ contract RentalManagement {
         bool isRented; // Status to indicate if the property is currently rented
     }
 
+    struct RentalHistory {
+    address tenant;
+    uint256 propertyId;
+    uint256 rentalStart;
+    uint256 rentalEnd;
+    uint256 deposit;
+}
+mapping(address => RentalHistory[]) public tenantHistory;
+mapping(address => RentalHistory[]) public ownerHistory;
+
     // Struct to store rental agreement details
     struct RentalAgreement {
         address tenant; // Address of the tenant
@@ -98,39 +108,51 @@ mapping(address => bool) public isTenant; // Mapping to track whether an address
     // Function to rent a property
     // Tenant needs to specify the property ID, rental start time, and rental end time
     // Must send sufficient rent and deposit
-    function rentProperty(
-        uint256 _propertyId,
-        uint256 _rentalStart,
-        uint256 _rentalEnd
-    ) public payable {
-        // Load the property based on the given ID
-        Property storage property = properties[_propertyId];
 
-        // Ensure the property is not already rented
-        require(!property.isRented, "Property is already rented");
+    mapping(uint256 => uint256) public deposits; 
 
-        // Ensure sufficient rent is sent with the transaction
-        require(msg.value >= property.rentPerMonth, "Insufficient rent");
+   function rentProperty(
+    uint256 _propertyId,
+    uint256 _rentalStart,
+    uint256 _rentalEnd
+) public payable {
+    // Load the property based on the given ID
+    Property storage property = properties[_propertyId];
 
-        // Set deposit as one month's rent and ensure it is paid
-        uint256 deposit = property.rentPerMonth;
-        require(msg.value >= deposit, "Deposit required");
+    // Ensure the property is not already rented
+    require(!property.isRented, "Property is already rented");
 
-        // Create a rental agreement for the property
-        rentalAgreements[_propertyId] = RentalAgreement(
-            msg.sender,
-            _propertyId,
-            deposit,
-            _rentalStart,
-            _rentalEnd
-        );
+    // Ensure sufficient rent is sent with the transaction
+    require(msg.value >= property.rentPerMonth, "Insufficient rent");
 
-        // Mark the property as rented
-        property.isRented = true;
+    // Set deposit as one month's rent and ensure it is paid
+    uint256 deposit = property.rentPerMonth;
+    require(msg.value >= deposit, "Deposit required");
 
-        // Emit an event to log the rental action
-        emit PropertyRented(_propertyId, msg.sender, _rentalStart, _rentalEnd);
-    }
+    // Update the deposits mapping
+    deposits[_propertyId] = deposit;
+
+    // Create a rental agreement for the property
+    rentalAgreements[_propertyId] = RentalAgreement(
+        msg.sender,
+        _propertyId,
+        deposit,
+        _rentalStart,
+        _rentalEnd
+    );
+    
+    // Mark the property as rented
+    property.isRented = true;
+
+    // Add to rental history
+    tenantHistory[msg.sender].push(RentalHistory(msg.sender, _propertyId, _rentalStart, _rentalEnd, deposit));
+    ownerHistory[property.owner].push(RentalHistory(msg.sender, _propertyId, _rentalStart, _rentalEnd, deposit));
+
+    // Emit an event to log the rental action
+    emit PropertyRented(_propertyId, msg.sender, _rentalStart, _rentalEnd);
+}
+
+   
 
     // Function for the property owner to return the security deposit to the tenant
     // Can only be called after the rental period ends
@@ -140,7 +162,9 @@ mapping(address => bool) public isTenant; // Mapping to track whether an address
 
         // Ensure the rental period has ended
         require(block.timestamp > agreement.rentalEnd, "Rental period not ended");
-
+ uint256 deposit = deposits[_propertyId];
+    require(deposit > 0, "No deposit available");
+    deposits[_propertyId] = 0; 
         // Transfer the deposit back to the tenant
         payable(agreement.tenant).transfer(agreement.deposit);
 
@@ -154,4 +178,20 @@ mapping(address => bool) public isTenant; // Mapping to track whether an address
         return properties;
     }
 
+<<<<<<< HEAD
+       // Getter function for tenant rental history
+    function GettenantHistory(address tenant, uint256 index) public view returns (RentalHistory memory) {
+    return tenantHistory[tenant][index]; // Assuming tenantHistory is a mapping storing arrays of RentalHistory
+}
+
+    // Getter function for owner rental history
+   function GetownerHistory(address owner, uint256 index) public view returns (RentalHistory memory) {
+    return ownerHistory[owner][index]; // Assuming ownerHistory is a mapping storing arrays of RentalHistory
+}
+
+
+
+
+=======
+>>>>>>> 54395b3030ed37ee200d3b737623fa807d5a8f43
 }
