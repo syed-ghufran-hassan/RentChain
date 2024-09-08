@@ -178,7 +178,7 @@ mapping(address => bool) public isTenant; // Mapping to track whether an address
         return properties;
     }
 
-<<<<<<< HEAD
+
        // Getter function for tenant rental history
     function GettenantHistory(address tenant, uint256 index) public view returns (RentalHistory memory) {
     return tenantHistory[tenant][index]; // Assuming tenantHistory is a mapping storing arrays of RentalHistory
@@ -192,6 +192,4 @@ mapping(address => bool) public isTenant; // Mapping to track whether an address
 
 
 
-=======
->>>>>>> 54395b3030ed37ee200d3b737623fa807d5a8f43
 }
