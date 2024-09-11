@@ -29,5 +29,5 @@ Incentive for Good Behavior: A transparent history of successful rentals and tim
 ## Dispute Resolution Mechanism
 In case of disputes (e.g., deposit return disagreements), a decentralized arbitration or dispute resolution process can be implemented via smart contracts.
 
-##Deployment
+## Deployment
 https://sepolia.etherscan.io/tx/0x3488a9804b8aeba48ddd88a8a39fc98b77486b192a3dddb4e7337a60c3677105
