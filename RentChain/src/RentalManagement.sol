@@ -189,7 +189,4 @@ mapping(address => bool) public isTenant; // Mapping to track whether an address
     return ownerHistory[owner][index]; // Assuming ownerHistory is a mapping storing arrays of RentalHistory
 }
 
-
-
-
 }

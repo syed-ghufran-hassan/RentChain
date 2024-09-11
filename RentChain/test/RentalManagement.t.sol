@@ -215,7 +215,7 @@ function testReturnDepositWithNoDeposit() public {
     rentalManagement.registerProperty("Luxury Apartment", "New York", 1 ether);
 }
 
-<<<<<<< HEAD
+
     function testRentPropertyWithSufficientFunds() public {
         // Register a property
         rentalManagement.registerProperty("Luxury Apartment", "New York", 1 ether);
@@ -239,7 +239,8 @@ function testReturnDepositWithNoDeposit() public {
 
    
         function testRentalHistory() public {
-     
+       uint256 start = block.timestamp;
+    uint256 end = block.timestamp + 30 days;
 
     // Rent the property
     vm.prank(tenant);
@@ -264,7 +265,3 @@ function testReturnDepositWithNoDeposit() public {
     }
     }
     
-
-
-
-
