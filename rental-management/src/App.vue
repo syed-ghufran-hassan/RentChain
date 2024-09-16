@@ -1,26 +1,34 @@
+<!-- App.vue -->
 <template>
   <div id="app">
     <AppHeader @account-changed="updateAccount" />
     <PropertyList />
     <RentProperty />
     <RentalHistory />
+    <MaintenanceRequest />
+    <AppNotification />
   </div>
 </template>
 
 <script>
-import Web3 from 'web3';
-import RentalManagementABI from '../../RentChain/out/RentalManagement.sol/RentalManagement.json';
 import AppHeader from './components/AppHeader.vue';
 import PropertyList from './components/PropertyList.vue';
 import RentProperty from './components/RentProperty.vue';
 import RentalHistory from './components/RentalHistory.vue';
+import MaintenanceRequest from './components/MaintenanceRequest.vue';
+import AppNotification from './components/AppNotification.vue';
+import Web3 from 'web3';
+import RentalManagementABI from '../../RentChain/out/RentalManagement.sol/RentalManagement.json';
+
 
 export default {
   components: {
     AppHeader,
     PropertyList,
     RentProperty,
-    RentalHistory
+    RentalHistory,
+    MaintenanceRequest,
+    AppNotification
   },
   data() {
     return {
@@ -52,3 +60,4 @@ export default {
   }
 };
 </script>
+
