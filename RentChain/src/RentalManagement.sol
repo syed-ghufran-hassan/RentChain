@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+
+import "./interfaces/IDisputeResolution.sol"; // Import the dispute resolution interface
+import "./interfaces/IMaintenanceRequest.sol"; // Import the maintenance request interface
+
 contract RentalManagement {
+
     // Struct to store property details
 
     struct Property {
