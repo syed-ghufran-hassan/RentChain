@@ -5,6 +5,7 @@ pragma solidity ^0.8.0;
 import "forge-std/Script.sol";
 import {RentalManagement} from "../src/RentalManagement.sol";
 
+
 contract DeployRentalManagement is Script {
     function run() external {
         // Start broadcasting transactions
@@ -12,6 +13,8 @@ contract DeployRentalManagement is Script {
 
         // Deploy the contract
         RentalManagement rentalManagement = new RentalManagement();
+
+        
 
         // Log the address of the deployed contract
         // Direct logging is not supported here; use foundry's built-in tools or manually verify
