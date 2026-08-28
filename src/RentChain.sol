@@ -309,8 +309,8 @@ contract RentChainFactory {
 
         // Record the agreement in the history contract
         IRentalHistory(history)
-            .recordAgreement(address(agreement), msg.sender, tenant, rentAmount, depositAmount, leaseDuration
-        );
+            .recordAgreement(address(agreement), msg.sender, tenant, rentAmount, depositAmount, 
+leaseDuration);
 
         emit AgreementCreated(address(agreement), msg.sender, tenant);
         return address(agreement);
