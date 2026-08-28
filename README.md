@@ -1,7 +1,5 @@
 # RentChain
-
-[![Foundry][foundry-badge]][foundry]
-[![License: MIT][license-badge]][license]
+ 
 
 **RentChain** is a decentralized rental agreement orchestrator built on Ethereum. It automates the entire rental lifecycle—from signing and escrow to rent collection, lease termination, and dispute recording—using smart contracts. All transactions and rental history are stored immutably on-chain, providing transparency and building reputation for both tenants and property owners.
 
