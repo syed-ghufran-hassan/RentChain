@@ -29,12 +29,7 @@ The system consists of three core contracts:
 | **RentalAgreement** | Handles the rental lifecycle: signing, escrow, rent payments, lease ending, deposit release, and disputes. Uses OpenZeppelin's `ReentrancyGuard`. |
 | **RentChainFactory** | Deploys new `RentalAgreement` instances and automatically registers them in `RentalHistory`. |
 
-```mermaid
-graph LR
-    Factory[RentChainFactory] -->|deploys & registers| Agreement[RentalAgreement]
-    Agreement -->|records events| History[RentalHistory]
-    Owner -->|signs & withdraws| Agreement
-    Tenant -->|signs, pays deposit & rent| Agreement
+ 
 
 ## Foundry
 
