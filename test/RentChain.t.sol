@@ -39,13 +39,13 @@ contract RentChainTest is Test {
 
         // Owner creates an agreement for the tenant
         vm.prank(owner);
-        agreement = RentalAgreement(factory.createAgreement(
+        agreement = RentalAgreement(payable(factory.createAgreement(
             tenant,
             RENT,
             DEPOSIT,
             DURATION,
             INTERVAL
-        ));
+        )));
     }
 
     // ------------------------------------------------------------------------
