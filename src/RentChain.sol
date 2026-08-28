@@ -18,11 +18,7 @@ interface IRentalHistory {
 
     function recordActivation(address agreement, uint256 startTime) external;
 
-    function recordPayment(
-        address agreement,
-        uint256 amount,
-        uint256 timestamp
-    ) external;
+    function recordPayment(address agreement, uint256 amount, uint256 timestamp) external;
 
     function recordEnd(address agreement, bool success) external;
 
@@ -89,11 +85,7 @@ contract RentalHistory is IRentalHistory {
         rec.startTime = startTime;
     }
 
-    function recordPayment(
-        address agreement,
-        uint256 amount,
-        uint256 timestamp
-    ) external override {
+    function recordPayment(address agreement, uint256 amount, uint256 timestamp) external override {
         AgreementRecord storage rec = agreements[agreement];
         require(rec.agreement != address(0), "Agreement not found");
         rec.paymentCount++;
@@ -127,14 +119,21 @@ contract RentalHistory is IRentalHistory {
 // RentalAgreement – handles a single rental between owner and tenant
 // ------------------------------------------------------------------------
 contract RentalAgreement is ReentrancyGuard {
-    enum State { Created, OwnerSigned, TenantSigned, Active, Ended, Disputed }
+    enum State {
+        Created,
+        OwnerSigned,
+        TenantSigned,
+        Active,
+        Ended,
+        Disputed
+    }
 
     address public owner;
     address public tenant;
     uint256 public rentAmount;
     uint256 public depositAmount;
-    uint256 public leaseDuration;    // seconds
-    uint256 public paymentInterval;  // seconds
+    uint256 public leaseDuration; // seconds
+    uint256 public paymentInterval; // seconds
     uint256 public leaseStart;
     uint256 public leaseEnd;
     uint256 public lastPaymentTimestamp;
@@ -151,7 +150,7 @@ contract RentalAgreement is ReentrancyGuard {
     event DepositReleased(address indexed tenant, uint256 amount);
     event DisputeRaised(address indexed initiator);
 
-    modifier onlyOwner() { 
+    modifier onlyOwner() {
         require(msg.sender == owner, "Not owner");
         _;
     }
@@ -239,7 +238,7 @@ contract RentalAgreement is ReentrancyGuard {
         uint256 amount = rentHeld;
         require(amount > 0, "No rent to withdraw");
         rentHeld = 0;
-        (bool sent, ) = owner.call{value: amount}("");
+        (bool sent,) = owner.call{value: amount}("");
         require(sent, "Failed to send rent");
         emit RentWithdrawn(owner, amount);
     }
@@ -259,7 +258,7 @@ contract RentalAgreement is ReentrancyGuard {
         require(amount > 0, "No deposit held");
         depositHeld = 0;
         depositReleased = true;
-        (bool sent, ) = tenant.call{value: amount}("");
+        (bool sent,) = tenant.call{value: amount}("");
         require(sent, "Failed to send deposit");
         emit DepositReleased(tenant, amount);
     }
@@ -288,6 +287,7 @@ contract RentalAgreement is ReentrancyGuard {
 // ------------------------------------------------------------------------
 contract RentChainFactory {
     address public history;
+
     event AgreementCreated(address indexed agreement, address indexed owner, address indexed tenant);
 
     constructor(address _history) {
@@ -299,29 +299,17 @@ contract RentChainFactory {
         address tenant,
         uint256 rentAmount,
         uint256 depositAmount,
-        uint256 leaseDuration,   // in seconds
-        uint256 paymentInterval  // in seconds
+        uint256 leaseDuration, // in seconds
+        uint256 paymentInterval // in seconds
     ) external returns (address) {
         require(tenant != address(0) && tenant != msg.sender, "Invalid tenant");
 
-        RentalAgreement agreement = new RentalAgreement(
-            history,
-            msg.sender,
-            tenant,
-            rentAmount,
-            depositAmount,
-            leaseDuration,
-            paymentInterval
-        );
+        RentalAgreement agreement =
+            new RentalAgreement(history, msg.sender, tenant, rentAmount, depositAmount, leaseDuration, paymentInterval);
 
         // Record the agreement in the history contract
         IRentalHistory(history).recordAgreement(
-            address(agreement),
-            msg.sender,
-            tenant,
-            rentAmount,
-            depositAmount,
-            leaseDuration
+            address(agreement), msg.sender, tenant, rentAmount, depositAmount, leaseDuration
         );
 
         emit AgreementCreated(address(agreement), msg.sender, tenant);
