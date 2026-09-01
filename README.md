@@ -98,7 +98,7 @@ $ cast --help
 
 ## Future Implementation Plan:
 
-Below is the plan for future implementation of rentchain:
+Below is the plan for future implementation in rentchain:
 
 #### Property Tokenization – Mint an ERC‑721 (NFT) or ERC‑1155 for each property that represents the title or leasehold rights.
 
