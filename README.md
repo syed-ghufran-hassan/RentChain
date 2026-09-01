@@ -95,3 +95,49 @@ $ forge --help
 $ anvil --help
 $ cast --help
 ```
+
+## Future Implementation Plan:
+
+Below is the plan for future implementation of rentchain:
+
+Property Tokenization – Mint an ERC‑721 (NFT) or ERC‑1155 for each property that represents the title or leasehold rights.
+
+Yield Tokenization – Allow the owner to tokenize future rent streams (e.g., mint ERC‑20 tokens that give holders a share of the monthly rent).
+
+Oracle Integration – Connect to a Chainlink oracle to automatically trigger deposit releases based on verified off‑chain inspection reports.
+
+Legal Wrapper – Add a legal clause (via a legal DAO or off‑chain registered document hash) that makes the on‑chain action enforceable in court.
+
+Lending/DeFi integration – Allow property owners to use the tokenized property as collateral for a DeFi loan—a classic RWA use case.
+
+## Implementation Roadmap
+
+### Phase 1: Property Tokenization
+
+- Deploying PropertyNFT and integrating with RentChainFactory.
+
+- Updating RentalAgreement to reference NFT ID.
+
+### Phase 2: Yield Tokenization
+
+- Deploy RentStreamToken.
+
+- Modify RentalAgreement to call distributeRent on each payment.
+
+### Phase 3: Oracle Integration
+
+- Set up Chainlink Functions or Use Chainlink Automation.
+
+- Add oracle address to RentalAgreement and allow automated deposit release.
+
+### Phase 4: Legal Wrapper
+
+- Deploy LegalWrapper.
+
+- Add document hash storage and dispute escalation.
+
+### Phase 5: DeFi Lending
+
+- Deploy RentChainLending using PropertyNFT as collateral.
+
+- Integrate with existing lending protocols if needed.
