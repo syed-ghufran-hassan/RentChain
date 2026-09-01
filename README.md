@@ -100,15 +100,15 @@ $ cast --help
 
 Below is the plan for future implementation of rentchain:
 
-Property Tokenization – Mint an ERC‑721 (NFT) or ERC‑1155 for each property that represents the title or leasehold rights.
+#### Property Tokenization – Mint an ERC‑721 (NFT) or ERC‑1155 for each property that represents the title or leasehold rights.
 
-Yield Tokenization – Allow the owner to tokenize future rent streams (e.g., mint ERC‑20 tokens that give holders a share of the monthly rent).
+#### Yield Tokenization – Allow the owner to tokenize future rent streams (e.g., mint ERC‑20 tokens that give holders a share of the monthly rent).
 
-Oracle Integration – Connect to a Chainlink oracle to automatically trigger deposit releases based on verified off‑chain inspection reports.
+#### Oracle Integration – Connect to a Chainlink oracle to automatically trigger deposit releases based on verified off‑chain inspection reports.
 
-Legal Wrapper – Add a legal clause (via a legal DAO or off‑chain registered document hash) that makes the on‑chain action enforceable in court.
+#### Legal Wrapper – Add a legal clause (via a legal DAO or off‑chain registered document hash) that makes the on‑chain action enforceable in court.
 
-Lending/DeFi integration – Allow property owners to use the tokenized property as collateral for a DeFi loan—a classic RWA use case.
+#### Lending/DeFi integration – Allow property owners to use the tokenized property as collateral for a DeFi loan—a classic RWA use case.
 
 ## Implementation Roadmap
 
