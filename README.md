@@ -141,3 +141,8 @@ Below is the plan for future implementation in rentchain:
 - Deploy RentChainLending using PropertyNFT as collateral.
 
 - Integrate with existing lending protocols if needed.
+## 📋 Deployed Contracts (Sepolia)
+
+| Contract | Address |
+|----------|---------|
+| RentalHistory | [`0x3c7F604022dAc5490BC2F2e1EF49641Ee16a0e16`](https://sepolia.etherscan.io/address/0x3c7F604022dAc5490BC2F2e1EF49641Ee16a0e16) |
