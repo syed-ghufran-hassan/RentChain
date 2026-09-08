@@ -141,8 +141,20 @@ Below is the plan for future implementation in rentchain:
 - Deploy RentChainLending using PropertyNFT as collateral.
 
 - Integrate with existing lending protocols if needed.
+
 ## 📋 Deployed Contracts (Sepolia)
 
 | Contract | Address |
 |----------|---------|
 | RentalHistory | [`0x3c7F604022dAc5490BC2F2e1EF49641Ee16a0e16`](https://sepolia.etherscan.io/address/0x3c7F604022dAc5490BC2F2e1EF49641Ee16a0e16) |
+
+## 🚀 V2 Upgrade Plan – Full RWA + ZK Feature Set
+
+| Feature | Implementation |
+|---------|----------------|
+| **Property Tokenization (ERC‑721)** | `PropertyNFT` – mint NFTs representing property titles or leasehold rights. |
+| **Yield Tokenization (ERC‑20)** | `RentStreamToken` – tokenizes future rent streams; holders receive proportional rent shares. |
+| **Oracle Integration (Chainlink)** | `RentalOracle` – uses Chainlink Functions/Automation to trigger deposit release based on inspection reports. |
+| **Legal Wrapper + DAO** | `LegalWrapper` – stores document hashes and escalates disputes to a legal DAO (e.g., Kleros). |
+| **DeFi Lending Integration** | `RentChainLending` – allows property owners to use Property NFTs as collateral for loans. |
+| **ZK Privacy Layer (Noir)** | Noir circuits for rental history, income, no disputes, KYC; off‑chain verification + signed attestations. |
