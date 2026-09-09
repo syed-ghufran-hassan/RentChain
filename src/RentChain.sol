@@ -31,6 +31,15 @@ interface IRentalHistory {
 }
 
 // ------------------------------------------------------------------------
+// Interface for PropertyNFT
+// ------------------------------------------------------------------------
+
+interface IPropertyNFT {
+    function ownerOf(uint256 tokenId) external view returns (address);
+    function getTokensByOwner(address owner) external view returns (uint256[] memory);
+}
+
+// ------------------------------------------------------------------------
 // RentalHistory – stores all agreements and events per user
 // ------------------------------------------------------------------------
 contract RentalHistory is IRentalHistory {
@@ -142,6 +151,8 @@ contract RentalAgreement is ReentrancyGuard {
     bool public depositReleased;
     State public state;
     IRentalHistory public history;
+    uint256 public propertyNFTId;
+    IPropertyNFT public propertyNFT;
 
     event AgreementSigned(address indexed signer, State newState);
     event RentPaid(address indexed tenant, uint256 amount, uint256 timestamp);
@@ -165,6 +176,11 @@ contract RentalAgreement is ReentrancyGuard {
         _;
     }
 
+     modifier onlyNFTOwner() {
+        require(propertyNFT.ownerOf(propertyNFTId) == owner, "NFT not owned by owner");
+        _;
+    }
+
     constructor(
         address _history,
         address _owner,
@@ -172,7 +188,9 @@ contract RentalAgreement is ReentrancyGuard {
         uint256 _rentAmount,
         uint256 _depositAmount,
         uint256 _leaseDuration,
-        uint256 _paymentInterval
+        uint256 _paymentInterval,
+        address _propertyNFTAddress,
+        uint256 _propertyNFTId
     ) {
         require(_owner != address(0) && _tenant != address(0) && _owner != _tenant, "Invalid addresses");
         require(_rentAmount > 0 && _depositAmount > 0 && _leaseDuration > 0 && _paymentInterval > 0, "Invalid terms");
@@ -185,6 +203,10 @@ contract RentalAgreement is ReentrancyGuard {
         paymentInterval = _paymentInterval;
         history = IRentalHistory(_history);
         state = State.Created;
+          propertyNFT = IPropertyNFT(_propertyNFTAddress);
+        propertyNFTId = _propertyNFTId;
+                // Verify that the caller (owner) owns the NFT
+        require(propertyNFT.ownerOf(_propertyNFTId) == _owner, "Not the NFT owner");
     }
 
     // Owner signs the agreement (can be called before or after tenant)
@@ -234,7 +256,7 @@ contract RentalAgreement is ReentrancyGuard {
     }
 
     // Owner withdraws accumulated rent payments
-    function withdrawRent() external onlyOwner inState(State.Active) nonReentrant {
+    function withdrawRent() external onlyOwner onlyNFTOwner inState(State.Active) nonReentrant {
         uint256 amount = rentHeld;
         require(amount > 0, "No rent to withdraw");
         rentHeld = 0;
@@ -295,23 +317,44 @@ contract RentChainFactory {
         history = _history;
     }
 
-    function createAgreement(
-        address tenant,
-        uint256 rentAmount,
-        uint256 depositAmount,
-        uint256 leaseDuration, // in seconds
-        uint256 paymentInterval // in seconds
-    ) external returns (address) {
-        require(tenant != address(0) && tenant != msg.sender, "Invalid tenant");
+   function createAgreement(
+    address tenant,
+    uint256 rentAmount,
+    uint256 depositAmount,
+    uint256 leaseDuration,
+    uint256 paymentInterval,
+    address propertyNFTAddress,
+    uint256 propertyNFTId
+) external returns (address) {
+    require(tenant != address(0) && tenant != msg.sender, "Invalid tenant");
 
-        RentalAgreement agreement =
-            new RentalAgreement(history, msg.sender, tenant, rentAmount, depositAmount, leaseDuration, paymentInterval);
+    // Verify NFT ownership by the caller
+    IPropertyNFT nft = IPropertyNFT(propertyNFTAddress);
+    require(nft.ownerOf(propertyNFTId) == msg.sender, "Not the NFT owner");
 
-        // Record the agreement in the history contract
-        IRentalHistory(history)
-            .recordAgreement(address(agreement), msg.sender, tenant, rentAmount, depositAmount, leaseDuration);
+    RentalAgreement agreement = new RentalAgreement(
+        history,
+        msg.sender,
+        tenant,
+        rentAmount,
+        depositAmount,
+        leaseDuration,
+        paymentInterval,
+        propertyNFTAddress,
+        propertyNFTId
+    );
 
-        emit AgreementCreated(address(agreement), msg.sender, tenant);
-        return address(agreement);
-    }
+    // Record agreement in history
+    IRentalHistory(history).recordAgreement(
+        address(agreement),
+        msg.sender,
+        tenant,
+        rentAmount,
+        depositAmount,
+        leaseDuration
+    );
+
+    emit AgreementCreated(address(agreement), msg.sender, tenant);
+    return address(agreement);
+}
 }
