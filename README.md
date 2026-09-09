@@ -147,6 +147,8 @@ Below is the plan for future implementation in rentchain:
 | Contract | Address |
 |----------|---------|
 | RentalHistory | [`0x3c7F604022dAc5490BC2F2e1EF49641Ee16a0e16`](https://sepolia.etherscan.io/address/0x3c7F604022dAc5490BC2F2e1EF49641Ee16a0e16) |
+| PropertyNFT | [`0x9AF296DA87Be1251964ab209C46B35672DC4808E`](https://sepolia.etherscan.io/address/0x9AF296DA87Be1251964ab209C46B35672DC4808E) |
+
 
 ## 🚀 V2 Upgrade Plan – Full RWA + ZK Feature Set
 
