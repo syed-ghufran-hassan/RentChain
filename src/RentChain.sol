@@ -45,6 +45,15 @@ interface IDisputeResolver {
 }
 
 // ------------------------------------------------------------------------
+// Interface for RentStreamToken
+// ------------------------------------------------------------------------
+
+
+interface IRentStreamToken {
+    function distributeRent() external payable;
+}
+
+// ------------------------------------------------------------------------
 // RentalHistory – stores all agreements and events per user
 // ------------------------------------------------------------------------
 contract RentalHistory is IRentalHistory {
@@ -144,6 +153,7 @@ contract RentalAgreement is ReentrancyGuard {
 
     address public owner;
     address public tenant;
+    address public rentStreamToken;
     uint256 public rentAmount;
     uint256 public depositAmount;
     uint256 public leaseDuration;
@@ -265,26 +275,34 @@ contract RentalAgreement is ReentrancyGuard {
     }
 
     // ---------- Rent Payment ----------
-    function payRent() external payable onlyTenant inState(State.Active) nonReentrant {
-        require(msg.value == rentAmount, "Must send exact rent amount");
-        require(block.timestamp >= lastPaymentTimestamp + paymentInterval, "Payment not due yet");
-        require(block.timestamp < leaseEnd, "Lease already ended");
+ function payRent() external payable onlyTenant inState(State.Active) nonReentrant {
+    require(msg.value == rentAmount, "Must send exact rent amount");
+    require(block.timestamp >= lastPaymentTimestamp + paymentInterval, "Payment not due yet");
+    require(block.timestamp < leaseEnd, "Lease already ended");
 
+    if (rentStreamToken != address(0)) {
+        // Forward to token holders
+        IRentStreamToken(rentStreamToken).distributeRent{value: msg.value}();
+    } else {
+        // Original path: accumulate for owner to withdraw
         rentHeld += msg.value;
-        lastPaymentTimestamp = block.timestamp;
-        history.recordPayment(address(this), msg.value, block.timestamp);
-        emit RentPaid(tenant, msg.value, block.timestamp);
     }
+
+    lastPaymentTimestamp = block.timestamp;
+    history.recordPayment(address(this), msg.value, block.timestamp);
+    emit RentPaid(tenant, msg.value, block.timestamp);
+}
 
     // ---------- Owner Rent Withdrawal ----------
-    function withdrawRent() external onlyOwner onlyNFTOwner inState(State.Active) nonReentrant {
-        uint256 amount = rentHeld;
-        require(amount > 0, "No rent to withdraw");
-        rentHeld = 0;
-        (bool sent,) = owner.call{value: amount}("");
-        require(sent, "Failed to send rent");
-        emit RentWithdrawn(owner, amount);
-    }
+  function withdrawRent() external onlyOwner onlyNFTOwner inState(State.Active) nonReentrant {
+    require(rentStreamToken == address(0), "Rent is tokenized");
+    uint256 amount = rentHeld;
+    require(amount > 0, "No rent to withdraw");
+    rentHeld = 0;
+    (bool sent, ) = owner.call{value: amount}("");
+    require(sent, "Failed to send rent");
+    emit RentWithdrawn(owner, amount);
+}
 
     // ---------- Lease End ----------
     function endLease() external onlyOwner inState(State.Active) {
@@ -377,6 +395,16 @@ contract RentalAgreement is ReentrancyGuard {
     function getStatus() external view returns (State) {
         return state;
     }
+
+    // ---------- Set RentStreamToken  ---------- 
+    function setRentStreamToken(address _token) external onlyOwner {
+    require(_token != address(0), "Invalid token");
+    require(
+        state == State.Created || state == State.OwnerSigned || state == State.TenantSigned,
+        "Too late to set"
+    );
+    rentStreamToken = _token;
+}
 }
 
 // ------------------------------------------------------------------------

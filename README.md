@@ -125,7 +125,7 @@ Below is the plan for future implementation in rentchain:
 
 ## Implementation Roadmap
 
-### Phase 1: Property Tokenization
+### Phase 1: Property Tokenization (Completed)
 
 - Deploying PropertyNFT and integrating with RentChainFactory.
 
