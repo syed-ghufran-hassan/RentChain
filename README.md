@@ -17,6 +17,7 @@
 - **Property Tokenization (ERC‑721)** – Every property is minted as an NFT, giving on‑chain proof of title or leasehold rights. Only the NFT holder can create a rental agreement for that property.
 - **Time‑Locked Escrow** – After the lease ends, a 7‑day dispute window starts. If no dispute is raised, anyone can trigger `autoReleaseDeposit()` to return the deposit to the tenant automatically.
 - **Optional Dispute Resolver** – A DAO or multisig can be plugged in as the dispute resolver. When a dispute is raised, the resolver is notified and can settle the deposit via `resolveDispute(bool tenantWins)`.
+- **Yield Tokenization (ERC‑20)** – Owners can tokenize a future rent stream into `RentStreamToken`. Investors buy tokens and receive a proportional share of each rent payment. The owner gains upfront liquidity, and investors earn a yield.
 
 ---
 
@@ -30,6 +31,7 @@ The system consists of four core contracts:
 | **RentalHistory** | Stores immutable records of all agreements, payments, and events per user. Implements the `IRentalHistory` interface. |
 | **RentalAgreement** | Handles the full rental lifecycle: signing, escrow, rent payments, lease end, time‑locked deposit release, and disputes. Uses OpenZeppelin's `ReentrancyGuard`. |
 | **RentChainFactory** | Deploys new `RentalAgreement` instances, verifies NFT ownership, and registers agreements in `RentalHistory`. |
+| **RentStreamToken** | ERC‑20 that represents a share of a future rent stream. Uses a reward‑per‑token accumulator to distribute rent to holders proportionally. |
 
 ## 🔄 Rental Lifecycle
 
@@ -42,6 +44,23 @@ The system consists of four core contracts:
 7. **Happy path** → if no dispute, anyone calls `autoReleaseDeposit()` after the window → deposit goes to tenant.
 8. **Dispute path** → either party calls `disputeDeposit()` during the window. The auto‑release timer is paused and the `disputeResolver` (if set) is notified.
 9. **Resolver settles** → the resolver calls `resolveDispute(bool tenantWins)` → deposit goes to the winner.
+
+## 💰 Yield Tokenization
+
+Owners can sell future rent cash flows as ERC‑20 tokens:
+
+1. Owner deploys `RentStreamToken(name, symbol, totalFutureRent, agreementAddress, ownerAddress)`.
+2. Owner calls `RentalAgreement.setRentStreamToken(tokenAddress)` **before both parties sign**.
+3. Owner transfers tokens to investors.
+4. Each `payRent()` call forwards rent directly to the token contract, which updates the reward accumulator.
+5. Investors call `RentStreamToken.claimReward()` to withdraw their share.
+
+**Distribution formula (O(1) per payment):**
+
+```bash
+rewardPerTokenStored += (rentPaid * 1e18) / totalSupply
+holderEarned = balance * (rewardPerTokenStored − userRewardPerTokenPaid) / 1e18 + rewards
+```
 
 ## Foundry
 
@@ -72,6 +91,7 @@ $ forge build
 $ forge test -vv
 $ forge test --match-contract PropertyNFTTest -vv
 $ forge test --match-test test_ResolverCanResolveDispute -vv
+$ forge test --match-contract RentStreamTokenTest -vv
 ```
 
 ### Gas Report
@@ -115,7 +135,11 @@ Below is the plan for future implementation in rentchain:
 - [x] Updated `RentalAgreement` to reference NFT ID via `propertyNFTId`.
 - [x] Added time-locked escrow + optional dispute resolver.
 
-#### Yield Tokenization – Allow the owner to tokenize future rent streams (e.g., mint ERC‑20 tokens that give holders a share of the monthly rent).
+### ✅ Phase 2: Yield Tokenization (Completed)
+
+- [x] Deployed `RentStreamToken` on Sepolia.
+- [x] Linked to `RentalAgreement` via `setRentStreamToken`.
+- [x] `payRent()` forwards rent to the token contract; holders claim via `claimReward()`.
 
 #### Oracle Integration – Connect to a Chainlink oracle to automatically trigger deposit releases based on verified off‑chain inspection reports.
 
@@ -127,11 +151,11 @@ Below is the plan for future implementation in rentchain:
 
 ### Phase 1: Property Tokenization (Completed)
 
-- Deploying PropertyNFT and integrating with RentChainFactory.
+- DeployPropertyNFT and integrating with RentChainFactory.
 
-- Updating RentalAgreement to reference NFT ID.
+- Update RentalAgreement to reference NFT ID.
 
-### Phase 2: Yield Tokenization
+### Phase 2: Yield Tokenization (Completed)
 
 - Deploy RentStreamToken.
 
@@ -159,8 +183,10 @@ Below is the plan for future implementation in rentchain:
 
 | Contract | Address |
 |----------|---------|
-| RentalHistory | [`0x3c7F604022dAc5490BC2F2e1EF49641Ee16a0e16`](https://sepolia.etherscan.io/address/0x3c7F604022dAc5490BC2F2e1EF49641Ee16a0e16) |
+| RentalHistory V1 | [`0x3c7F604022dAc5490BC2F2e1EF49641Ee16a0e16`](https://sepolia.etherscan.io/address/0x3c7F604022dAc5490BC2F2e1EF49641Ee16a0e16) |
 | PropertyNFT | [`0x9AF296DA87Be1251964ab209C46B35672DC4808E`](https://sepolia.etherscan.io/address/0x9AF296DA87Be1251964ab209C46B35672DC4808E) |
+| RentalHistory V2 | [`0xD65C262902E61ed068Fb42e6461E150d264394Cc`](https://sepolia.etherscan.io/address/0xD65C262902E61ed068Fb42e6461E150d264394Cc) |
+| RentStreamToken | [`0xab660b16BB9af8E75fEF5Fc0A40F99f22Dd6988a`](https://sepolia.etherscan.io/address/0xab660b16BB9af8E75fEF5Fc0A40F99f22Dd6988a) |
 
 
  
@@ -177,8 +203,7 @@ $ forge create src/PropertyNFT.sol:PropertyNFT \
 ## 🚀 V2 Upgrade Plan – Full RWA + ZK Feature Set
 
 | Feature | Implementation |
-|---------|----------------| 
-| **Yield Tokenization (ERC‑20)** | `RentStreamToken` – tokenizes future rent streams; holders receive proportional rent shares. |
+|---------|----------------|  
 | **Oracle Integration (Chainlink)** | `RentalOracle` – uses Chainlink Functions/Automation to trigger deposit release based on inspection reports. |
 | **Legal Wrapper + DAO** | `LegalWrapper` – stores document hashes and escalates disputes to a legal DAO (e.g., Kleros). |
 | **DeFi Lending Integration** | `RentChainLending` – allows property owners to use Property NFTs as collateral for loans. |
