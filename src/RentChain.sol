@@ -39,6 +39,11 @@ interface IPropertyNFT {
     function getTokensByOwner(address owner) external view returns (uint256[] memory);
 }
 
+interface IDisputeResolver {
+    function escalate(address agreement) external;
+    function resolve(address agreement, bool tenantWins) external;
+}
+
 // ------------------------------------------------------------------------
 // RentalHistory – stores all agreements and events per user
 // ------------------------------------------------------------------------
@@ -141,8 +146,8 @@ contract RentalAgreement is ReentrancyGuard {
     address public tenant;
     uint256 public rentAmount;
     uint256 public depositAmount;
-    uint256 public leaseDuration; // seconds
-    uint256 public paymentInterval; // seconds
+    uint256 public leaseDuration;
+    uint256 public paymentInterval;
     uint256 public leaseStart;
     uint256 public leaseEnd;
     uint256 public lastPaymentTimestamp;
@@ -151,36 +156,51 @@ contract RentalAgreement is ReentrancyGuard {
     bool public depositReleased;
     State public state;
     IRentalHistory public history;
+
+    // ---------- NFT Integration (V2) ----------
     uint256 public propertyNFTId;
     IPropertyNFT public propertyNFT;
 
+    // ---------- Time‑lock dispute (V1 enhancement) ----------
+    uint256 public constant DISPUTE_WINDOW = 7 days;
+    uint256 public depositReleaseDeadline;
+    bool public defaultOutcome; // true = tenant gets deposit on auto-release
+    address public disputeResolver;
+
+    // ---------- Events ----------
     event AgreementSigned(address indexed signer, State newState);
     event RentPaid(address indexed tenant, uint256 amount, uint256 timestamp);
     event RentWithdrawn(address indexed owner, uint256 amount);
     event LeaseEnded(address indexed owner, uint256 endTime);
-    event DepositReleased(address indexed tenant, uint256 amount);
+    event DepositReleased(address indexed recipient, uint256 amount);
     event DisputeRaised(address indexed initiator);
+    event DisputeResolved(address indexed resolver, bool tenantWins);
 
+    // ---------- Modifiers ----------
     modifier onlyOwner() {
         require(msg.sender == owner, "Not owner");
         _;
     }
-
     modifier onlyTenant() {
         require(msg.sender == tenant, "Not tenant");
         _;
     }
-
     modifier inState(State _state) {
         require(state == _state, "Invalid state");
         _;
     }
-
-     modifier onlyNFTOwner() {
-        require(propertyNFT.ownerOf(propertyNFTId) == owner, "NFT not owned by owner");
+    modifier onlyResolver() {
+        require(msg.sender == disputeResolver, "Only resolver");
+        _;
+    }
+    modifier onlyNFTOwner() {
+        require(
+            address(propertyNFT) == address(0) || propertyNFT.ownerOf(propertyNFTId) == owner, "NFT not owned by owner"
+        );
         _;
     }
 
+    // ---------- Constructor ----------
     constructor(
         address _history,
         address _owner,
@@ -202,14 +222,17 @@ contract RentalAgreement is ReentrancyGuard {
         leaseDuration = _leaseDuration;
         paymentInterval = _paymentInterval;
         history = IRentalHistory(_history);
+
+        if (_propertyNFTAddress != address(0)) {
+            propertyNFT = IPropertyNFT(_propertyNFTAddress);
+            propertyNFTId = _propertyNFTId;
+            require(propertyNFT.ownerOf(_propertyNFTId) == _owner, "Not the NFT owner");
+        }
+
         state = State.Created;
-          propertyNFT = IPropertyNFT(_propertyNFTAddress);
-        propertyNFTId = _propertyNFTId;
-                // Verify that the caller (owner) owns the NFT
-        require(propertyNFT.ownerOf(_propertyNFTId) == _owner, "Not the NFT owner");
     }
 
-    // Owner signs the agreement (can be called before or after tenant)
+    // ---------- Signing ----------
     function signAsOwner() external onlyOwner {
         require(state == State.Created || state == State.TenantSigned, "Cannot sign now");
         if (state == State.Created) {
@@ -220,7 +243,6 @@ contract RentalAgreement is ReentrancyGuard {
         emit AgreementSigned(owner, state);
     }
 
-    // Tenant signs and pays the deposit (exact amount required)
     function signAsTenant() external payable onlyTenant {
         require(state == State.Created || state == State.OwnerSigned, "Cannot sign now");
         require(msg.value == depositAmount, "Must send exact deposit amount");
@@ -234,16 +256,15 @@ contract RentalAgreement is ReentrancyGuard {
         emit AgreementSigned(tenant, state);
     }
 
-    // Internal activation when both parties have signed
     function _activate() internal {
         state = State.Active;
         leaseStart = block.timestamp;
         leaseEnd = block.timestamp + leaseDuration;
-        lastPaymentTimestamp = block.timestamp; // first payment due after one interval
+        lastPaymentTimestamp = block.timestamp;
         history.recordActivation(address(this), leaseStart);
     }
 
-    // Tenant pays monthly rent – only when at least one interval has passed
+    // ---------- Rent Payment ----------
     function payRent() external payable onlyTenant inState(State.Active) nonReentrant {
         require(msg.value == rentAmount, "Must send exact rent amount");
         require(block.timestamp >= lastPaymentTimestamp + paymentInterval, "Payment not due yet");
@@ -255,7 +276,7 @@ contract RentalAgreement is ReentrancyGuard {
         emit RentPaid(tenant, msg.value, block.timestamp);
     }
 
-    // Owner withdraws accumulated rent payments
+    // ---------- Owner Rent Withdrawal ----------
     function withdrawRent() external onlyOwner onlyNFTOwner inState(State.Active) nonReentrant {
         uint256 amount = rentHeld;
         require(amount > 0, "No rent to withdraw");
@@ -265,40 +286,94 @@ contract RentalAgreement is ReentrancyGuard {
         emit RentWithdrawn(owner, amount);
     }
 
-    // Owner ends the lease after the lease duration has passed
+    // ---------- Lease End ----------
     function endLease() external onlyOwner inState(State.Active) {
         require(block.timestamp >= leaseEnd, "Lease not ended yet");
         state = State.Ended;
+        // Set the auto-release deadline and default outcome (tenant gets deposit)
+        depositReleaseDeadline = block.timestamp + DISPUTE_WINDOW;
+        defaultOutcome = true;
         history.recordEnd(address(this), true);
         emit LeaseEnded(owner, block.timestamp);
     }
 
-    // Owner releases the deposit to tenant after the lease has ended
-    function releaseDeposit() external onlyOwner inState(State.Ended) nonReentrant {
-        require(!depositReleased, "Deposit already released");
+    // ---------- Auto‑release deposit (no dispute) ----------
+    function autoReleaseDeposit() external {
+        require(!depositReleased, "No deposit held"); //   check this first
+        require(state != State.Disputed, "Disputed, cannot auto-release");
+        require(state == State.Ended, "Invalid state");
+        require(block.timestamp >= depositReleaseDeadline, "Deadline not reached");
+
         uint256 amount = depositHeld;
         require(amount > 0, "No deposit held");
+
         depositHeld = 0;
         depositReleased = true;
+
+        address recipient = defaultOutcome ? tenant : owner;
+        (bool sent,) = recipient.call{value: amount}("");
+        require(sent, "Failed to send deposit");
+        emit DepositReleased(recipient, amount);
+    }
+
+    // ---------- Deposit Release by Owner (legacy fallback) ----------
+    function releaseDeposit() external onlyOwner nonReentrant {
+        require(!depositReleased, "Deposit already released"); //  check this first
+        require(state != State.Disputed, "Disputed, use resolver or auto-release");
+        require(state == State.Ended, "Invalid state");
+
+        uint256 amount = depositHeld;
+        require(amount > 0, "No deposit held");
+
+        depositHeld = 0;
+        depositReleased = true;
+
         (bool sent,) = tenant.call{value: amount}("");
         require(sent, "Failed to send deposit");
         emit DepositReleased(tenant, amount);
     }
 
-    // Either party can raise a dispute (only after the lease has ended)
+    // ---------- Dispute ----------
     function disputeDeposit() external inState(State.Ended) {
         require(msg.sender == owner || msg.sender == tenant, "Not party");
+        require(block.timestamp < depositReleaseDeadline, "Dispute window closed");
         state = State.Disputed;
+        depositReleaseDeadline = type(uint256).max; // pause auto-release
         history.recordDispute(address(this));
+
+        if (disputeResolver != address(0)) {
+            IDisputeResolver(disputeResolver).escalate(address(this));
+        }
         emit DisputeRaised(msg.sender);
     }
 
-    // Reject direct ETH transfers
+    // ---------- Resolver (DAO) resolution ----------
+    function resolveDispute(bool tenantWins) external onlyResolver {
+        require(state == State.Disputed, "Not in dispute");
+        uint256 amount = depositHeld;
+        require(amount > 0, "No deposit");
+        depositHeld = 0;
+        depositReleased = true;
+
+        address recipient = tenantWins ? tenant : owner;
+        (bool sent,) = recipient.call{value: amount}("");
+        require(sent, "Transfer failed");
+        emit DepositReleased(recipient, amount);
+        emit DisputeResolved(msg.sender, tenantWins);
+        // Optionally reset state or keep as Disputed
+    }
+
+    // ---------- Admin ----------
+    function setDisputeResolver(address _resolver) external onlyOwner {
+        disputeResolver = _resolver;
+    }
+
+    // ---------- Reject direct ETH ----------
     receive() external payable {
         revert("Direct payments not allowed");
     }
 
-    // View helpers
+    // ---------- View ----------
     function getStatus() external view returns (State) {
         return state;
     }
@@ -317,44 +392,38 @@ contract RentChainFactory {
         history = _history;
     }
 
-   function createAgreement(
-    address tenant,
-    uint256 rentAmount,
-    uint256 depositAmount,
-    uint256 leaseDuration,
-    uint256 paymentInterval,
-    address propertyNFTAddress,
-    uint256 propertyNFTId
-) external returns (address) {
-    require(tenant != address(0) && tenant != msg.sender, "Invalid tenant");
+    function createAgreement(
+        address tenant,
+        uint256 rentAmount,
+        uint256 depositAmount,
+        uint256 leaseDuration,
+        uint256 paymentInterval,
+        address propertyNFTAddress,
+        uint256 propertyNFTId
+    ) external returns (address) {
+        require(tenant != address(0) && tenant != msg.sender, "Invalid tenant");
 
-    // Verify NFT ownership by the caller
-    IPropertyNFT nft = IPropertyNFT(propertyNFTAddress);
-    require(nft.ownerOf(propertyNFTId) == msg.sender, "Not the NFT owner");
+        // Verify NFT ownership by the caller
+        IPropertyNFT nft = IPropertyNFT(propertyNFTAddress);
+        require(nft.ownerOf(propertyNFTId) == msg.sender, "Not the NFT owner");
 
-    RentalAgreement agreement = new RentalAgreement(
-        history,
-        msg.sender,
-        tenant,
-        rentAmount,
-        depositAmount,
-        leaseDuration,
-        paymentInterval,
-        propertyNFTAddress,
-        propertyNFTId
-    );
+        RentalAgreement agreement = new RentalAgreement(
+            history,
+            msg.sender,
+            tenant,
+            rentAmount,
+            depositAmount,
+            leaseDuration,
+            paymentInterval,
+            propertyNFTAddress,
+            propertyNFTId
+        );
 
-    // Record agreement in history
-    IRentalHistory(history).recordAgreement(
-        address(agreement),
-        msg.sender,
-        tenant,
-        rentAmount,
-        depositAmount,
-        leaseDuration
-    );
+        // Record agreement in history
+        IRentalHistory(history)
+            .recordAgreement(address(agreement), msg.sender, tenant, rentAmount, depositAmount, leaseDuration);
 
-    emit AgreementCreated(address(agreement), msg.sender, tenant);
-    return address(agreement);
-}
+        emit AgreementCreated(address(agreement), msg.sender, tenant);
+        return address(agreement);
+    }
 }

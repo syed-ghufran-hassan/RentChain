@@ -52,15 +52,8 @@ contract PropertyNFTTest is Test {
 
     function test_CreateAgreementWithNFT() public {
         vm.prank(owner);
-        address agreementAddr = factory.createAgreement(
-            tenant,
-            RENT,
-            DEPOSIT,
-            DURATION,
-            INTERVAL,
-            address(nft),
-            tokenId
-        );
+        address agreementAddr =
+            factory.createAgreement(tenant, RENT, DEPOSIT, DURATION, INTERVAL, address(nft), tokenId);
         agreement = RentalAgreement(payable(agreementAddr));
 
         assertEq(agreement.propertyNFTId(), tokenId);
@@ -72,42 +65,19 @@ contract PropertyNFTTest is Test {
     function test_OnlyNFTOwnerCanCreate() public {
         vm.prank(nonOwner);
         vm.expectRevert("Not the NFT owner");
-        factory.createAgreement(
-            tenant,
-            RENT,
-            DEPOSIT,
-            DURATION,
-            INTERVAL,
-            address(nft),
-            tokenId
-        );
+        factory.createAgreement(tenant, RENT, DEPOSIT, DURATION, INTERVAL, address(nft), tokenId);
     }
 
     function test_ThirdPartyCannotCreate() public {
         vm.prank(thirdParty);
         vm.expectRevert("Not the NFT owner");
-        factory.createAgreement(
-            tenant,
-            RENT,
-            DEPOSIT,
-            DURATION,
-            INTERVAL,
-            address(nft),
-            tokenId
-        );
+        factory.createAgreement(tenant, RENT, DEPOSIT, DURATION, INTERVAL, address(nft), tokenId);
     }
 
     function test_NFTTransferBreaksAgreement() public {
         vm.prank(owner);
-        address agreementAddr = factory.createAgreement(
-            tenant,
-            RENT,
-            DEPOSIT,
-            DURATION,
-            INTERVAL,
-            address(nft),
-            tokenId
-        );
+        address agreementAddr =
+            factory.createAgreement(tenant, RENT, DEPOSIT, DURATION, INTERVAL, address(nft), tokenId);
         agreement = RentalAgreement(payable(agreementAddr));
 
         vm.prank(owner);
@@ -167,19 +137,8 @@ contract PropertyNFTTest is Test {
     function test_InvalidNFTIdReverts() public {
         uint256 invalidTokenId = 999;
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(
-            bytes4(keccak256("ERC721NonexistentToken(uint256)")),
-            invalidTokenId
-        ));
-        factory.createAgreement(
-            tenant,
-            RENT,
-            DEPOSIT,
-            DURATION,
-            INTERVAL,
-            address(nft),
-            invalidTokenId
-        );
+        vm.expectRevert(abi.encodeWithSelector(bytes4(keccak256("ERC721NonexistentToken(uint256)")), invalidTokenId));
+        factory.createAgreement(tenant, RENT, DEPOSIT, DURATION, INTERVAL, address(nft), invalidTokenId);
     }
 
     function test_SupportsInterface() public {
