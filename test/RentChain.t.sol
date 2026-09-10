@@ -659,29 +659,29 @@ contract RentChainTest is Test {
     }
 
     function test_AutoReleaseOnlyOnce() public {
-    // 1. Activate
-    vm.prank(owner);
-    agreement.signAsOwner();
-    vm.prank(tenant);
-    agreement.signAsTenant{value: DEPOSIT}();
+        // 1. Activate
+        vm.prank(owner);
+        agreement.signAsOwner();
+        vm.prank(tenant);
+        agreement.signAsTenant{value: DEPOSIT}();
 
-    // 2. End lease
-    vm.warp(block.timestamp + DURATION + 1 days);
-    vm.prank(owner);
-    agreement.endLease();
+        // 2. End lease
+        vm.warp(block.timestamp + DURATION + 1 days);
+        vm.prank(owner);
+        agreement.endLease();
 
-    // 3. Move past the dispute window
-    vm.warp(block.timestamp + 8 days);
+        // 3. Move past the dispute window
+        vm.warp(block.timestamp + 8 days);
 
-    // 4. First call — succeeds
-    agreement.autoReleaseDeposit();
-    assertTrue(agreement.depositReleased());
-    assertEq(agreement.depositHeld(), 0);
+        // 4. First call — succeeds
+        agreement.autoReleaseDeposit();
+        assertTrue(agreement.depositReleased());
+        assertEq(agreement.depositHeld(), 0);
 
-    // 5. Second call — should revert with "No deposit held"
-    vm.expectRevert("No deposit held");
-    agreement.autoReleaseDeposit();
-}
+        // 5. Second call — should revert with "No deposit held"
+        vm.expectRevert("No deposit held");
+        agreement.autoReleaseDeposit();
+    }
 }
 
 contract MockResolver {
