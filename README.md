@@ -23,7 +23,7 @@
 
 ## 🏗️ Architecture
 
-The system consists of four core contracts:
+The system consists of five core contracts:
 
 | Contract | Purpose |
 |----------|---------|
@@ -123,43 +123,22 @@ $ forge --help
 $ anvil --help
 $ cast --help
 ```
+ 
 
-## Future Implementation Plan:
+## Implementation Roadmap
 
-Below is the plan for future implementation in rentchain:
-
-#### ✅ Phase 1: Property Tokenization (Completed)
+### ✅ Phase 1: Property Tokenization (Completed)
 
 - [x] Deployed `PropertyNFT` on Sepolia.
 - [x] Integrated with `RentChainFactory` (verifies NFT ownership).
 - [x] Updated `RentalAgreement` to reference NFT ID via `propertyNFTId`.
-- [x] Added time-locked escrow + optional dispute resolver.
+- [x] Added time-locked escrow + optional dispute resolver + 30-day timeout fallback.
 
 ### ✅ Phase 2: Yield Tokenization (Completed)
 
 - [x] Deployed `RentStreamToken` on Sepolia.
 - [x] Linked to `RentalAgreement` via `setRentStreamToken`.
 - [x] `payRent()` forwards rent to the token contract; holders claim via `claimReward()`.
-
-#### Oracle Integration – Connect to a Chainlink oracle to automatically trigger deposit releases based on verified off‑chain inspection reports.
-
-#### Legal Wrapper – Add a legal clause (via a legal DAO or off‑chain registered document hash) that makes the on‑chain action enforceable in court.
-
-#### Lending/DeFi integration – Allow property owners to use the tokenized property as collateral for a DeFi loan—a classic RWA use case.
-
-## Implementation Roadmap
-
-### Phase 1: Property Tokenization (Completed)
-
-- DeployPropertyNFT and integrating with RentChainFactory.
-
-- Update RentalAgreement to reference NFT ID.
-
-### Phase 2: Yield Tokenization (Completed)
-
-- Deploy RentStreamToken.
-
-- Modify RentalAgreement to call distributeRent on each payment.
 
 ### Phase 3: Oracle Integration
 
@@ -181,24 +160,87 @@ Below is the plan for future implementation in rentchain:
 
 ## 📋 Deployed Contracts (Sepolia)
 
-| Contract | Address |
-|----------|---------|
-| RentalHistory V1 | [`0x3c7F604022dAc5490BC2F2e1EF49641Ee16a0e16`](https://sepolia.etherscan.io/address/0x3c7F604022dAc5490BC2F2e1EF49641Ee16a0e16) |
-| PropertyNFT | [`0x9AF296DA87Be1251964ab209C46B35672DC4808E`](https://sepolia.etherscan.io/address/0x9AF296DA87Be1251964ab209C46B35672DC4808E) |
-| RentalHistory V2 | [`0xD65C262902E61ed068Fb42e6461E150d264394Cc`](https://sepolia.etherscan.io/address/0xD65C262902E61ed068Fb42e6461E150d264394Cc) |
-| RentStreamToken | [`0xab660b16BB9af8E75fEF5Fc0A40F99f22Dd6988a`](https://sepolia.etherscan.io/address/0xab660b16BB9af8E75fEF5Fc0A40F99f22Dd6988a) |
-
+| Contract | Address | Notes |
+|----------|---------|-------|
+| RentalHistory (legacy) | [`0x3c7F604022dAc5490BC2F2e1EF49641Ee16a0e16`](https://sepolia.etherscan.io/address/0x3c7F604022dAc5490BC2F2e1EF49641Ee16a0e16) | Original combined V1 deployment |
+| PropertyNFT | [`0x9AF296DA87Be1251964ab209C46B35672DC4808E`](https://sepolia.etherscan.io/address/0x9AF296DA87Be1251964ab209C46B35672DC4808E) | ERC-721 |
+| RentalHistory (V2) | [`0xa4273A4CEAf340f986476462539e1d3B8276bc28`](https://sepolia.etherscan.io/address/0xa4273A4CEAf340f986476462539e1d3B8276bc28) | Used by V2 factory |
+| RentChainFactory (V2) | [`0x37C90213DD1712eDaCE79294Fe2Ea09Cac5c9b6F`](https://sepolia.etherscan.io/address/0x37C90213DD1712eDaCE79294Fe2Ea09Cac5c9b6F) | Embeds V2 RentalAgreement |
+| RentalAgreement (old manual) | [`0xD65C262902E61ed068Fb42e6461E150d264394Cc`](https://sepolia.etherscan.io/address/0xD65C262902E61ed068Fb42e6461E150d264394Cc) | Manual deploy, no factory |
+| RentalAgreement (V2 example) | [`0x26a1C334C57cAc0925723490Cb59586B391BD4D3`](https://sepolia.etherscan.io/address/0x26a1C334C57cAc0925723490Cb59586B391BD4D3) | Created via factory |
+| RentStreamToken | [`0xab660b16BB9af8E75fEF5Fc0A40F99f22Dd6988a`](https://sepolia.etherscan.io/address/0xab660b16BB9af8E75fEF5Fc0A40F99f22Dd6988a) | Linked to V2 agreement |
 
  
-### Deployment Command
+## 🚀 Deployment (Sepolia)
+
+Deploy in this order:
+
+### 1. RentalHistory
 
 ```bash
-$ forge create src/PropertyNFT.sol:PropertyNFT \
-    --rpc-url $RPC_URL \
-    --private-key $PRIVATE_KEY \
-    --verify \
-    --etherscan-api-key $ETHERSCAN_API_KEY
+forge create src/RentalHistory.sol:RentalHistory \
+    --rpc-url $RPC_URL --private-key $PRIVATE_KEY \
+    --verify --etherscan-api-key $ETHERSCAN_API_KEY \
+    --broadcast
+# → $HISTORY_V2
 ```
+
+### 2. RentChainFactory
+
+```bash
+forge create src/RentChainFactory.sol:RentChainFactory \
+    --rpc-url $RPC_URL --private-key $PRIVATE_KEY \
+    --verify --etherscan-api-key $ETHERSCAN_API_KEY \
+    --broadcast \
+    --constructor-args $HISTORY_V2
+# → $FACTORY_V2
+```
+
+### 3.  PropertyNFT
+
+```bash
+forge create src/PropertyNFT.sol:PropertyNFT \
+    --rpc-url $RPC_URL --private-key $PRIVATE_KEY \
+    --verify --etherscan-api-key $ETHERSCAN_API_KEY \
+    --broadcast
+# → $NFT_V2
+```
+ 
+### 4. Mint a property
+
+```bash
+cast send $NFT_V2 "registerProperty(string)" "ipfs://..." \
+    --rpc-url $RPC_URL --private-key $PRIVATE_KEY
+```
+
+### 5. Create a RentalAgreement via the factory
+
+```bash
+cast send $FACTORY_V2 "createAgreement(address,uint256,uint256,uint256,uint256,address,uint256)" \
+    $TENANT_ADDRESS 1ether 2ether 2592000 86400 $NFT_V2 1 \
+    --rpc-url $RPC_URL --private-key $PRIVATE_KEY
+# → $AGREEMENT_V2 (from AgreementCreated event)
+```
+
+###  6. RentStreamToken
+
+```bash
+forge create src/RentStreamToken.sol:RentStreamToken \
+    --rpc-url $RPC_URL --private-key $PRIVATE_KEY \
+    --verify --etherscan-api-key $ETHERSCAN_API_KEY \
+    --broadcast \
+    --constructor-args "RentChain Stream" "RCS" 12ether $AGREEMENT_V2 $OWNER_ADDRESS
+# → $TOKEN_V2
+```
+
+###  7.Link the token to the agreement
+
+```bash
+cast send $AGREEMENT_V2 "setRentStreamToken(address)" $TOKEN_V2 \
+    --rpc-url $RPC_URL --private-key $PRIVATE_KEY
+```    
+
+
 
 ## 🚀 V2 Upgrade Plan – Full RWA + ZK Feature Set
 

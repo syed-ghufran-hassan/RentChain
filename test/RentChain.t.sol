@@ -2,8 +2,11 @@
 pragma solidity ^0.8.0;
 
 import "forge-std/Test.sol";
-import "../src/RentChain.sol";
 import "../src/PropertyNFT.sol"; // ✅ Added import
+import "../src/RentalHistory.sol";
+import "../src/RentalAgreement.sol";
+import "../src/RentChainFactory.sol";
+import "../src/PropertyNFT.sol";
 
 contract RentChainTest is Test {
     RentalHistory public history;
@@ -579,10 +582,12 @@ contract RentChainTest is Test {
     }
 
     function test_ResolverCanResolveDispute() public {
-        // Deploy mock resolver
         MockResolver resolver = new MockResolver();
 
-        // Activate and end lease
+        //   Set resolver BEFORE signing (state must still be Created)
+        vm.prank(owner);
+        agreement.setDisputeResolver(address(resolver));
+
         vm.prank(owner);
         agreement.signAsOwner();
         vm.prank(tenant);
@@ -592,31 +597,16 @@ contract RentChainTest is Test {
         vm.prank(owner);
         agreement.endLease();
 
-        // Owner sets resolver
-        vm.prank(owner);
-        agreement.setDisputeResolver(address(resolver));
-
-        // Tenant disputes
         vm.prank(tenant);
         agreement.disputeDeposit();
 
-        // Resolver should have been notified
         assertEq(resolver.agreement(), address(agreement));
 
-        // Resolver decides in favor of owner
         vm.prank(address(resolver));
-        resolver.resolve(false); // tenantWins = false
+        resolver.resolve(false);
 
-        // Owner gets deposit
-        uint256 ownerBalanceBefore = owner.balance;
-        // The resolve function already sent deposit, so we just check balances
-        // We need to capture event or balance change.
-        // In this test we can simply assert depositReleased.
         assertTrue(agreement.depositReleased());
         assertEq(agreement.depositHeld(), 0);
-
-        // Check that deposit went to owner (simplified: we'd capture before/after)
-        // We'll add a separate balance check if needed.
     }
 
     function test_OwnerCannotReleaseAfterDispute() public {
@@ -681,6 +671,129 @@ contract RentChainTest is Test {
         // 5. Second call — should revert with "No deposit held"
         vm.expectRevert("No deposit held");
         agreement.autoReleaseDeposit();
+    }
+
+    // ------------------------------------------------------------------------
+    // Resolver freeze tests
+    // ------------------------------------------------------------------------
+    function test_SetResolverAfterActivationReverts() public {
+        vm.prank(owner);
+        agreement.signAsOwner();
+
+        vm.prank(owner);
+        vm.expectRevert("Resolver frozen after signing");
+        agreement.setDisputeResolver(address(0x123));
+    }
+
+    function test_SetResolverOnlyInCreated() public {
+        // Works in Created
+        vm.prank(owner);
+        agreement.setDisputeResolver(address(0x123));
+        assertEq(agreement.disputeResolver(), address(0x123));
+    }
+
+    // ------------------------------------------------------------------------
+    // Timeout fallback tests
+    // ------------------------------------------------------------------------
+    function test_DisputeTimeoutReturnsToTenant() public {
+        vm.prank(owner);
+        agreement.signAsOwner();
+        vm.prank(tenant);
+        agreement.signAsTenant{value: DEPOSIT}();
+
+        vm.warp(block.timestamp + DURATION + 1 days);
+        vm.prank(owner);
+        agreement.endLease();
+
+        vm.prank(tenant);
+        agreement.disputeDeposit();
+
+        // Warp past 30-day timeout
+        vm.warp(block.timestamp + 31 days);
+
+        uint256 tenantBalanceBefore = tenant.balance;
+        agreement.finalizeDispute();
+        uint256 tenantBalanceAfter = tenant.balance;
+
+        assertEq(tenantBalanceAfter - tenantBalanceBefore, DEPOSIT);
+        assertTrue(agreement.depositReleased());
+    }
+
+    function test_ResolverCannotActAfterTimeout() public {
+        // Deploy the resolver FIRST
+        MockResolver resolver = new MockResolver();
+
+        // Set it BEFORE signing (state must be Created)
+        vm.prank(owner);
+        agreement.setDisputeResolver(address(resolver));
+
+        vm.prank(owner);
+        agreement.signAsOwner();
+        vm.prank(tenant);
+        agreement.signAsTenant{value: DEPOSIT}();
+
+        vm.warp(block.timestamp + DURATION + 1 days);
+        vm.prank(owner);
+        agreement.endLease();
+
+        vm.prank(tenant);
+        agreement.disputeDeposit();
+
+        // Warp past 30-day timeout
+        vm.warp(block.timestamp + 31 days);
+
+        vm.prank(address(resolver)); // ← `resolver` in scope here
+        vm.expectRevert("Timeout passed, use finalizeDispute");
+        agreement.resolveDispute(false);
+    }
+
+    function test_FinalizeDisputeBeforeTimeoutReverts() public {
+        // 1. Activate
+        vm.prank(owner);
+        agreement.signAsOwner();
+        vm.prank(tenant);
+        agreement.signAsTenant{value: DEPOSIT}();
+
+        // 2. End lease
+        vm.warp(block.timestamp + DURATION + 1 days);
+        vm.prank(owner);
+        agreement.endLease();
+
+        // 3. Raise dispute (still inside the 7-day window)
+        vm.prank(tenant);
+        agreement.disputeDeposit();
+
+        // Sanity check — state must now be Disputed
+        assertEq(uint256(agreement.state()), uint256(RentalAgreement.State.Disputed));
+
+        // 4. Try to finalize immediately — should revert with "Timeout not reached"
+        vm.expectRevert("Timeout not reached");
+        agreement.finalizeDispute();
+    }
+
+    // ------------------------------------------------------------------------
+    // Regression: happy path unchanged
+    // ------------------------------------------------------------------------
+    function test_AutoReleaseStillWorksIfNoDispute() public {
+        // 1. Activate the agreement
+        vm.prank(owner);
+        agreement.signAsOwner();
+        vm.prank(tenant);
+        agreement.signAsTenant{value: DEPOSIT}();
+
+        // 2. Move past the lease duration
+        vm.warp(block.timestamp + DURATION + 1 days);
+
+        // 3. ✅ End the lease — this sets state to Ended and starts the 7-day window
+        vm.prank(owner);
+        agreement.endLease();
+
+        // 4. Move past the 7-day dispute window
+        vm.warp(block.timestamp + 8 days);
+
+        // 5. Auto-release
+        agreement.autoReleaseDeposit();
+        assertTrue(agreement.depositReleased());
     }
 }
 
