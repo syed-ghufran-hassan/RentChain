@@ -3,7 +3,9 @@ pragma solidity ^0.8.0;
 
 import "forge-std/Test.sol";
 import "../src/RentStreamToken.sol";
-import "../src/RentChain.sol";
+import "../src/RentalHistory.sol";
+import "../src/RentalAgreement.sol";
+import "../src/RentChainFactory.sol";
 import "../src/PropertyNFT.sol";
 
 contract RentStreamTokenTest is Test {
@@ -41,19 +43,11 @@ contract RentStreamTokenTest is Test {
         factory = new RentChainFactory(address(history));
         vm.prank(owner);
         agreement = RentalAgreement(
-            payable(factory.createAgreement(
-                tenant, RENT, DEPOSIT, DURATION, INTERVAL, address(nft), tokenId
-            ))
+            payable(factory.createAgreement(tenant, RENT, DEPOSIT, DURATION, INTERVAL, address(nft), tokenId))
         );
 
         // Deploy RentStreamToken and link to agreement
-        rst = new RentStreamToken(
-            "RentChain Stream",
-            "RCS",
-            FUTURE_RENT,
-            address(agreement),
-            owner
-        );
+        rst = new RentStreamToken("RentChain Stream", "RCS", FUTURE_RENT, address(agreement), owner);
 
         vm.prank(owner);
         agreement.setRentStreamToken(address(rst));
@@ -79,9 +73,7 @@ contract RentStreamTokenTest is Test {
         agreement.signAsTenant{value: DEPOSIT}();
 
         // Try to set token (should fail)
-        RentStreamToken bad = new RentStreamToken(
-            "X", "X", 1 ether, address(agreement), owner
-        );
+        RentStreamToken bad = new RentStreamToken("X", "X", 1 ether, address(agreement), owner);
         vm.prank(owner);
         vm.expectRevert("Too late to set");
         agreement.setRentStreamToken(address(bad));
@@ -268,7 +260,7 @@ contract RentStreamTokenTest is Test {
     // ------------------------------------------------------------------------
     function test_DirectETHTransferReverts() public {
         vm.deal(address(this), 1 ether);
-        (bool sent, ) = address(rst).call{value: 1 ether}("");
+        (bool sent,) = address(rst).call{value: 1 ether}("");
         assertFalse(sent, "Direct ETH transfer should revert");
     }
 }

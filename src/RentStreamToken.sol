@@ -76,7 +76,7 @@ contract RentStreamToken is ERC20, Ownable {
         rewards[msg.sender] = 0;
         userRewardPerTokenPaid[msg.sender] = rewardPerTokenStored;
 
-        (bool sent, ) = msg.sender.call{value: reward}("");
+        (bool sent,) = msg.sender.call{value: reward}("");
         require(sent, "Transfer failed");
 
         emit RewardClaimed(msg.sender, reward);

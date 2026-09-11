@@ -3,7 +3,9 @@ pragma solidity ^0.8.0;
 
 import "forge-std/Test.sol";
 import "../src/PropertyNFT.sol";
-import "../src/RentChain.sol";
+import "../src/RentalHistory.sol";
+import "../src/RentalAgreement.sol";
+import "../src/RentChainFactory.sol";
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
