@@ -68,6 +68,7 @@ Owners can sell future rent cash flows as ERC‑20 tokens:
 
 ```math
 rewardPerTokenStored += (rentPaid * 1e18) / totalSupply
+
 holderEarned = balance * (rewardPerTokenStored − userRewardPerTokenPaid) / 1e18 + rewards
 ```
 
