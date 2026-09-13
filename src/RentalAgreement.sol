@@ -20,6 +20,7 @@ contract RentalAgreement is ReentrancyGuard {
     address public owner;
     address public tenant;
     address public rentStreamToken;
+    address public oracle;
     uint256 public rentAmount;
     uint256 public depositAmount;
     uint256 public leaseDuration;
@@ -53,6 +54,8 @@ contract RentalAgreement is ReentrancyGuard {
     event DisputeResolved(address indexed resolver, bool tenantWins);
     event ResolverSet(address indexed resolver);
     event DisputeFinalized(address indexed caller, bool tenantWins);
+    event OracleSet(address indexed oracle);
+    event OracleReleasedDeposit(address indexed recipient, uint256 amount);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Not owner");
@@ -74,6 +77,10 @@ contract RentalAgreement is ReentrancyGuard {
         require(
             address(propertyNFT) == address(0) || propertyNFT.ownerOf(propertyNFTId) == owner, "NFT not owned by owner"
         );
+        _;
+    }
+    modifier onlyOracle() {
+        require(msg.sender == oracle, "Only oracle");
         _;
     }
 
@@ -269,10 +276,40 @@ contract RentalAgreement is ReentrancyGuard {
         emit ResolverSet(_resolver);
     }
 
+    /// @notice Owner sets the oracle address before signing.
+    function setOracle(address _oracle) external onlyOwner {
+        require(state == State.Created, "Oracle frozen after signing");
+        require(_oracle != address(0), "Invalid oracle");
+        oracle = _oracle;
+        emit OracleSet(_oracle);
+    }
+
     function setRentStreamToken(address _token) external onlyOwner {
         require(_token != address(0), "Invalid token");
         require(state == State.Created || state == State.OwnerSigned || state == State.TenantSigned, "Too late to set");
         rentStreamToken = _token;
+    }
+
+    // ---------- Oracle Release ----------
+    /// @notice Called by the oracle after a successful off-chain inspection.
+    ///         Releases the deposit to the tenant without waiting for the
+    ///         7-day window. Cannot override a dispute.
+    function releaseDepositByOracle() external onlyOracle {
+        require(state == State.Ended, "Invalid state");
+        require(!depositReleased, "Already released");
+        require(block.timestamp < depositReleaseDeadline, "Window closed");
+
+        uint256 amount = depositHeld;
+        require(amount > 0, "No deposit held");
+
+        depositHeld = 0;
+        depositReleased = true;
+
+        (bool sent,) = tenant.call{value: amount}("");
+        require(sent, "Transfer failed");
+
+        emit DepositReleased(tenant, amount);
+        emit OracleReleasedDeposit(tenant, amount);
     }
 
     receive() external payable {
@@ -283,3 +320,4 @@ contract RentalAgreement is ReentrancyGuard {
         return state;
     }
 }
+
