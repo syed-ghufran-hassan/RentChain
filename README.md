@@ -64,21 +64,23 @@ Owners can sell future rent cash flows as ERC‑20 tokens:
  **Note on rounding:** because Solidity integer division truncates, `rewardPerTokenStored` accrues tiny rounding dust (a few wei per payment). The dust stays in the token contract; it does not affect any individual holder materially.
 ```
 
-**Distribution formula (O(1) per payment):**
-
-```markdown
 **Reward accumulator (updated on each rent payment):**
 
 $$
-\text{rewardPerTokenStored} \mathrel{+}= \frac{\text{rentPaid} \times 10^{18}}{\text{totalSupply}}
+rewardPerTokenStored \mathrel{+}= \frac{rentPaid \times 10^{18}}{totalSupply}
 $$
 
 **Holder's claimable amount (view function):**
 
 $$
-\text{earned}(\text{holder}) = \frac{\text{balanceOf}(\text{holder}) \times \bigl(\text{rewardPerTokenStored} - \text{userRewardPerTokenPaid}[\text{holder}]\bigr)}{10^{18}} + \text{rewards}[\text{holder}]
+earned(h) = \frac{balanceOf(h) \times (rewardPerTokenStored - userRewardPerTokenPaid[h])}{10^{18}} + rewards[h]
 $$
-```
+
+**On claim or transfer, the holder's snapshot is updated:**
+
+$$
+userRewardPerTokenPaid[h] = rewardPerTokenStored \quad\quad rewards[h] = 0
+$$
 
 ### 🚫 Guaranteed Failure Paths
 
