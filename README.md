@@ -66,10 +66,18 @@ Owners can sell future rent cash flows as ERC‑20 tokens:
 
 **Distribution formula (O(1) per payment):**
 
-```math
-rewardPerTokenStored += (rentPaid * 1e18) / totalSupply
+```markdown
+**Reward accumulator (updated on each rent payment):**
 
-holderEarned = balance * (rewardPerTokenStored − userRewardPerTokenPaid) / 1e18 + rewards
+$$
+\text{rewardPerTokenStored} \mathrel{+}= \frac{\text{rentPaid} \times 10^{18}}{\text{totalSupply}}
+$$
+
+**Holder's claimable amount (view function):**
+
+$$
+\text{earned}(\text{holder}) = \frac{\text{balanceOf}(\text{holder}) \times \bigl(\text{rewardPerTokenStored} - \text{userRewardPerTokenPaid}[\text{holder}]\bigr)}{10^{18}} + \text{rewards}[\text{holder}]
+$$
 ```
 
 ### 🚫 Guaranteed Failure Paths
