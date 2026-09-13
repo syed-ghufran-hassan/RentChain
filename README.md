@@ -60,9 +60,9 @@ Owners can sell future rent cash flows as ERC‑20 tokens:
 4. Each `payRent()` call forwards rent directly to the token contract, which updates the reward accumulator.
 5. Investors call `RentStreamToken.claimReward()` to withdraw their share.
 
-```markdown
- **Note on rounding:** because Solidity integer division truncates, `rewardPerTokenStored` accrues tiny rounding dust (a few wei per payment). The dust stays in the token contract; it does not affect any individual holder materially.
-```
+ 
+>  **Note on rounding:** because Solidity integer division truncates, `rewardPerTokenStored` accrues tiny rounding dust (a few wei per payment). The dust stays in the token contract; it does not affect any individual holder materially.
+ 
 
 **Reward accumulator (updated on each rent payment):**
 
