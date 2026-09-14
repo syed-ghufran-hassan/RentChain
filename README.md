@@ -19,12 +19,13 @@
 - **Optional Dispute Resolver** – A DAO or multisig can be plugged in as the dispute resolver. When a dispute is raised, the resolver is notified and can settle the deposit via `resolveDispute(bool tenantWins)`.
 - **Yield Tokenization (ERC‑20)** – Owners can tokenize a future rent stream into `RentStreamToken`. Investors buy tokens and receive a proportional share of each rent payment. The owner gains upfront liquidity, and investors earn a yield.
 - **Oracle‑Assisted Deposit Release** – A Chainlink Functions oracle can release the deposit early when an off-chain inspection passes. Cannot override an open dispute.
+- **Legal Wrapper + DAO Arbitration** – Each agreement's signed lease is anchored on-chain via IPFS hash and jurisdiction. Disputes escalate to a Kleros-compatible arbitrator that rules on the deposit release.
 
 ---
 
 ## 🏗️ Architecture
 
-The system consists of six core contracts:
+The system consists of seven core contracts:
 
 | Contract | Purpose |
 |----------|---------|
@@ -34,6 +35,8 @@ The system consists of six core contracts:
 | **RentChainFactory** | Deploys new `RentalAgreement` instances, verifies NFT ownership, and registers agreements in `RentalHistory`. |
 | **RentStreamToken** | ERC‑20 that represents a share of a future rent stream. Uses a reward‑per‑token accumulator to distribute rent to holders proportionally. |
 | **RentalOracle** | Chainlink Functions consumer. After lease end, queries an off-chain inspection API and calls `releaseDepositByOracle()` if the inspection passed. |
+| **LegalWrapper** | Anchors signed lease documents (IPFS hash + jurisdiction) to each agreement and tracks escalation status. |
+| **KlerosResolver** | Implements `IDisputeResolver`. Opens a Kleros arbitration on dispute; on ruling, calls `RentalAgreement.resolveDispute(bool)`. |
 
 ## 🔄 Rental Lifecycle
 
@@ -46,7 +49,7 @@ The system consists of six core contracts:
 7. **Inspection (optional)** → owner requests an off-chain inspection via `RentalOracle`. If it passes, `releaseDepositByOracle()` releases the deposit to the tenant early — this **cannot** override a dispute.
 8. **Happy path** → if no oracle and no dispute, anyone calls `autoReleaseDeposit()` after the 7-day window → deposit goes to tenant.
 9. **Dispute path** → either party calls `disputeDeposit()` during the window. The timer pauses and the `disputeResolver` (if set) is notified.
-10. **Resolver settles** → the resolver calls `resolveDispute(bool tenantWins)` → deposit goes to the winner.
+10. **Resolver settles** → the resolver calls `resolveDispute(bool tenantWins)` → deposit goes to the winner. When the resolver is a Kleros adapter, this follows a full arbitration: `LegalWrapper.anchorDocument(...)` stores the lease hash → `disputeDeposit()` escalates to Kleros → the arbitrator's ruling triggers `resolveDispute(bool)`.
 11. **Timeout fallback** → if the resolver is silent for 30 days after a dispute is raised, anyone can call `finalizeDispute()` and the deposit goes to the tenant by default.
 > **Resolver & oracle freeze:** `setDisputeResolver()` and `setOracle()` can only be called while the agreement is in the `Created` state. Once either party signs, both are locked — this prevents late appointment of a resolver that could bias an ongoing dispute.
 
@@ -82,6 +85,30 @@ $$
 userRewardPerTokenPaid[h] = rewardPerTokenStored \quad\quad rewards[h] = 0
 $$
 
+## ⚖️ Legal Wrapper + DAO Arbitration
+
+Every agreement can be anchored to its off-chain lease document, and disputes can be escalated to a decentralized arbitrator.
+
+1. **Anchor the lease** — the owner calls `LegalWrapper.anchorDocument(agreement, docHash, jurisdiction)`. The hash points to an IPFS-stored PDF; the jurisdiction records the applicable legal system (e.g., `US-CA`).
+2. **Wire the resolver** — before signing, the owner sets `RentalAgreement.disputeResolver = KlerosResolver`.
+3. **Fund the fee pool** — anyone can call `KlerosResolver.fundFeePool()` to cover arbitration costs (~0.01 ETH per dispute).
+4. **Dispute** — on `disputeDeposit()`, the agreement calls `KlerosResolver.escalate(agreement)`, which:
+   - Verifies the document is anchored.
+   - Opens a Kleros dispute with `choices = 2` (`[owner wins, tenant wins]`).
+   - Records the case in `LegalWrapper` (`escalated = true`).
+5. **Ruling** — the arbitrator calls `KlerosResolver.rule(disputeId, ruling)`. The resolver forwards the outcome via `RentalAgreement.resolveDispute(tenantWins)`.
+6. **Release** — the deposit goes to the winner. The default 30-day timeout fallback still applies if the arbitrator never rules.
+
+> **Why this matters:** the on-chain agreement is now tied to a signed legal document. Disputes are resolved by a neutral third party (Kleros), not by the property owner — closing the trust gap that a time-lock alone can't.
+
+### Contracts
+
+| Contract | Purpose |
+|----------|---------|
+| **LegalWrapper** | Stores IPFS hash + jurisdiction per agreement; tracks whether a dispute was escalated. |
+| **KlerosResolver** | Adapter that implements `IDisputeResolver` and bridges RentChain to a Kleros-compatible arbitrator. |
+| **IArbitrator** | Minimal interface for the arbitrator (create dispute, quote cost). |
+
 ### 🚫 Guaranteed Failure Paths
 
 | Action | Reverts with |
@@ -98,6 +125,14 @@ $$
 | Resolver tries to act after timeout | `"Timeout passed, use finalizeDispute"` |
 | Owner sets resolver after signing | `"Resolver frozen after signing"` |
 | Owner sets oracle after signing | `"Oracle frozen after signing"` |
+| Escalate dispute without anchored document | `"Agreement not anchored"` |
+| Escalate when fee pool is empty | `"Insufficient fee pool"` |
+| Non-arbitrator calls `rule()` | `"Only arbitrator"` |
+| Arbitrator rules twice on the same dispute | `"Already ruled"` |
+| Stranger updates an anchored document | `"Not authorized"` |
+| Anchor with zero hash | `"Invalid hash"` |
+| Anchor with empty jurisdiction | `"Invalid jurisdiction"` |
+| Escalate same agreement twice | `"Already escalated"` |
 
 ## Foundry
 
@@ -129,7 +164,10 @@ $ forge test -vv
 $ forge test --match-contract PropertyNFTTest -vv
 $ forge test --match-test test_ResolverCanResolveDispute -vv
 $ forge test --match-contract RentStreamTokenTest -vv
+$ forge test --match-contract LegalWrapperTest -vv
+$ forge test --match-contract KlerosResolverTest -vv
 $ forge test --match-contract RentalOracleTest -vv
+
 ```
 
 ### Gas Report
@@ -184,11 +222,13 @@ $ cast --help
 - [x] Integrated Chainlink Functions to fetch inspection results.
 - [x] `RentalAgreement.releaseDepositByOracle()` callable only by oracle, only in `Ended` state, cannot override a dispute.
 
-### Phase 4: Legal Wrapper
+### ✅ Phase 4: Legal Wrapper + DAO (Completed)
 
-- Deploy LegalWrapper.
-
-- Add document hash storage and dispute escalation.
+- [x] Deployed `LegalWrapper` on Sepolia — anchors IPFS lease hashes + jurisdiction.
+- [x] Deployed `KlerosResolver` — bridges RentChain disputes to a Kleros-compatible arbitrator.
+- [x] Fee pool funded; arbitrator rules on disputed deposits.
+- [x] Escalation requires an anchored document — no anchoring, no arbitration.
+- [x] 16 unit tests for `LegalWrapper`, 12 for `KlerosResolver`.
 
 ### Phase 5: DeFi Lending
 
@@ -206,6 +246,9 @@ $ cast --help
 | RentalAgreement (V2 example) | [`0x26a1C334C57cAc0925723490Cb59586B391BD4D3`](https://sepolia.etherscan.io/address/0x26a1C334C57cAc0925723490Cb59586B391BD4D3) | Created via factory |
 | RentStreamToken | [`0xab660b16BB9af8E75fEF5Fc0A40F99f22Dd6988a`](https://sepolia.etherscan.io/address/0xab660b16BB9af8E75fEF5Fc0A40F99f22Dd6988a) | Linked to V2 agreement |
 | **RentalOracle** | [`0x598B526F0EB6de6b01A499e5B504964869CAbedA`](https://sepolia.etherscan.io/address/0x598B526F0EB6de6b01A499e5B504964869CAbedA) | Chainlink Functions inspection oracle |
+| LegalWrapper | [`0x9798Bd262856aFDA145CDF30c23354597Aa84734`](https://sepolia.etherscan.io/address/0x9798Bd262856aFDA145CDF30c23354597Aa84734) | IPFS lease anchoring |
+| MockArbitrator | [`0xde15d862E246CC8B289f00d589024774AAEcd580`](https://sepolia.etherscan.io/address/0xde15d862E246CC8B289f00d589024774AAEcd580) | Test arbitrator (Kleros on mainnet) |
+| KlerosResolver | [`0x28F87cBA77485e4eD1A8962c2E5f8F52a97118cE`](https://sepolia.etherscan.io/address/0x28F87cBA77485e4eD1A8962c2E5f8F52a97118cE) | Dispute → arbitration adapter |
 
 ### 🗄️ Legacy Deployments
 
@@ -309,11 +352,61 @@ cast send $ORACLE_V2 "registerAgreement(address)" $AGREEMENT_V2 \
     --rpc-url $RPC_URL --private-key $PRIVATE_KEY
 ```
 
+### 10. LegalWrapper
+
+```bash
+forge create src/LegalWrapper.sol:LegalWrapper \
+    --rpc-url $RPC_URL --private-key $PRIVATE_KEY \
+    --verify --etherscan-api-key $ETHERSCAN_API_KEY \
+    --broadcast
+# → $WRAPPER_V2
+```
+
+### 11. MockArbitrator (replace with Kleros on mainnet)
+
+```bash
+forge create test/mocks/MockArbitrator.sol:MockArbitrator \
+    --rpc-url $RPC_URL --private-key $PRIVATE_KEY \
+    --verify --etherscan-api-key $ETHERSCAN_API_KEY \
+    --broadcast
+# → $ARBITER_V2
+```
+
+### 12. KlerosResolver
+
+```bash
+forge create src/KlerosResolver.sol:KlerosResolver \
+    --rpc-url $RPC_URL --private-key $PRIVATE_KEY \
+    --verify --etherscan-api-key $ETHERSCAN_API_KEY \
+    --broadcast \
+    --constructor-args $ARBITER_V2 $WRAPPER_V2
+# → $RESOLVER_V2
+``` 
+
+### 13. Fund the resolver's fee pool
+
+```bash
+cast send $RESOLVER_V2 "fundFeePool()" --value 0.05ether \
+    --rpc-url $RPC_URL --private-key $PRIVATE_KEY
+```
+
+### 14. Anchor the lease and wire the resolver (per agreement, pre-signing)
+
+```bash
+# Anchor the lease document
+cast send $WRAPPER_V2 "anchorDocument(address,bytes32,string)" \
+    $AGREEMENT_V2 $(cast keccak "lease-v1") "US-CA" \
+    --rpc-url $RPC_URL --private-key $PRIVATE_KEY
+
+# Wire the resolver (must be in Created state)
+cast send $AGREEMENT_V2 "setDisputeResolver(address)" $RESOLVER_V2 \
+    --rpc-url $RPC_URL --private-key $PRIVATE_KEY
+```
+
 ## 🚀 V2 Upgrade Plan – Full RWA + ZK Feature Set
 
 | Feature | Implementation |
 |---------|----------------|   
-| **Legal Wrapper + DAO** | `LegalWrapper` – stores document hashes and escalates disputes to a legal DAO (e.g., Kleros). |
 | **DeFi Lending Integration** | `RentChainLending` – allows property owners to use Property NFTs as collateral for loans. |
 | **ZK Privacy Layer (Noir)** | Noir circuits for rental history, income, no disputes, KYC; off‑chain verification + signed attestations. |
 
