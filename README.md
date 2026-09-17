@@ -20,12 +20,13 @@
 - **Yield Tokenization (ERC‑20)** – Owners can tokenize a future rent stream into `RentStreamToken`. Investors buy tokens and receive a proportional share of each rent payment. The owner gains upfront liquidity, and investors earn a yield.
 - **Oracle‑Assisted Deposit Release** – A Chainlink Functions oracle can release the deposit early when an off-chain inspection passes. Cannot override an open dispute.
 - **Legal Wrapper + DAO Arbitration** – Each agreement's signed lease is anchored on-chain via IPFS hash and jurisdiction. Disputes escalate to a Kleros-compatible arbitrator that rules on the deposit release.
+- **DeFi Lending** – Property owners can use `PropertyNFT` as collateral to borrow stablecoins. Loans accrue 10% APR; positions above the 75% liquidation threshold can be liquidated by anyone.
 
 ---
 
 ## 🏗️ Architecture
 
-The system consists of seven core contracts:
+The system consists of eight core contracts:
 
 | Contract | Purpose |
 |----------|---------|
@@ -37,6 +38,7 @@ The system consists of seven core contracts:
 | **RentalOracle** | Chainlink Functions consumer. After lease end, queries an off-chain inspection API and calls `releaseDepositByOracle()` if the inspection passed. |
 | **LegalWrapper** | Anchors signed lease documents (IPFS hash + jurisdiction) to each agreement and tracks escalation status. |
 | **KlerosResolver** | Implements `IDisputeResolver`. Opens a Kleros arbitration on dispute; on ruling, calls `RentalAgreement.resolveDispute(bool)`. |
+| **RentChainLending** | Collateralized lending pool. Accepts `PropertyNFT` as collateral, lends stablecoins up to a 50% LTV, and liquidates positions above the 75% liquidation threshold. |
 
 ## 🔄 Rental Lifecycle
 
@@ -109,6 +111,29 @@ Every agreement can be anchored to its off-chain lease document, and disputes ca
 | **KlerosResolver** | Adapter that implements `IDisputeResolver` and bridges RentChain to a Kleros-compatible arbitrator. |
 | **IArbitrator** | Minimal interface for the arbitrator (create dispute, quote cost). |
 
+## 🏦 DeFi Lending
+
+Property owners can unlock liquidity without selling by borrowing against their tokenized real estate.
+
+1. **Deposit collateral** — the owner approves the lending contract, then calls `depositCollateral(tokenId, appraisedValue)`. The `PropertyNFT` is transferred into the pool.
+2. **Borrow** — up to **50% LTV** (`maxBorrow = collateralValue × 5000 / 10000`). Loan tokens (USDC) are transferred to the borrower.
+3. **Accrue interest** — simple 10% APR, per-second. `currentDebt(tokenId)` returns principal + accrued interest − repaid.
+4. **Repay** — the borrower approves USDC and calls `repay(tokenId, amount)`. Once debt = 0, the loan is closed.
+5. **Withdraw** — the borrower calls `withdrawCollateral(tokenId)` and receives the NFT back.
+6. **Liquidate** — if `currentLtvBps(tokenId) ≥ 7500` (75%), anyone can call `liquidate(tokenId)`. The liquidator repays the debt + a 10% penalty and receives the NFT.
+
+### Parameters
+
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| **LTV** | 50% | Max borrow as a fraction of the appraisal |
+| **Liquidation threshold** | 75% | Debt/collateral ratio at which liquidation is allowed |
+| **Liquidation penalty** | 10% | Added to debt paid by the liquidator |
+| **Interest rate** | 10% APR | Simple, per-second accrual |
+| **Loan asset** | USDC | Circle-issued USDC on Sepolia |
+
+> **Note on appraisal:** in V1, the collateral value is set by the borrower at deposit time (for demo purposes). Production would use an oracle or a DAO appraiser.
+
 ### 🚫 Guaranteed Failure Paths
 
 | Action | Reverts with |
@@ -133,6 +158,18 @@ Every agreement can be anchored to its off-chain lease document, and disputes ca
 | Anchor with zero hash | `"Invalid hash"` |
 | Anchor with empty jurisdiction | `"Invalid jurisdiction"` |
 | Escalate same agreement twice | `"Already escalated"` |
+| Non-owner calls `fundPool()` | `"OwnableUnauthorizedAccount"` |
+| Deposit an NFT you don't own | `"Not NFT owner"` |
+| Deposit an already-locked NFT | `"Already locked"` |
+| Borrow more than LTV allows | `"Exceeds LTV"` |
+| Borrow when the loan is already active | `"Loan active"` |
+| Borrow more than the pool holds | `"Insufficient pool liquidity"` |
+| Repay a non-existent loan | `"No active loan"` |
+| Non-borrower calls `repay()` | `"Not borrower"` |
+| Non-borrower calls `withdrawCollateral()` | `"Not borrower"` |
+| Withdraw while loan is active | `"Loan still active"` |
+| Liquidate a healthy loan | `"Not liquidatable"` |
+| Liquidate with insufficient USDC | `"Payment failed"` |
 
 ## Foundry
 
@@ -167,6 +204,7 @@ $ forge test --match-contract RentStreamTokenTest -vv
 $ forge test --match-contract LegalWrapperTest -vv
 $ forge test --match-contract KlerosResolverTest -vv
 $ forge test --match-contract RentalOracleTest -vv
+$ forge test --match-contract RentChainLendingTest -vv
 
 ```
 
@@ -230,25 +268,29 @@ $ cast --help
 - [x] Escalation requires an anchored document — no anchoring, no arbitration.
 - [x] 16 unit tests for `LegalWrapper`, 12 for `KlerosResolver`.
 
-### Phase 5: DeFi Lending
+### ✅ Phase 5: DeFi Lending (Completed)
 
-- Deploy RentChainLending using PropertyNFT as collateral.
-
-- Integrate with existing lending protocols if needed.
+- [x] Deployed `RentChainLending` on Sepolia — accepts `PropertyNFT` as collateral.
+- [x] Uses Circle's Sepolia USDC (`0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`) as the loan asset.
+- [x] 50% LTV; 75% liquidation threshold; 10% APR; 10% liquidation penalty.
+- [x] `borrow`, `repay`, `withdrawCollateral`, `liquidate` all implemented.
+- [x] 11 unit tests + Anvil E2E verified.
 
 ## 📋 Deployed Contracts (Sepolia)
 
 | Contract | Address | Notes |
 |----------|---------|-------|
-| PropertyNFT | [`0x9AF296DA87Be1251964ab209C46B35672DC4808E`](https://sepolia.etherscan.io/address/0x9AF296DA87Be1251964ab209C46B35672DC4808E) | ERC-721 property titles |
-| RentalHistory | [`0xa4273A4CEAf340f986476462539e1d3B8276bc28`](https://sepolia.etherscan.io/address/0xa4273A4CEAf340f986476462539e1d3B8276bc28) | Immutable agreement records |
-| RentChainFactory | [`0x37C90213DD1712eDaCE79294Fe2Ea09Cac5c9b6F`](https://sepolia.etherscan.io/address/0x37C90213DD1712eDaCE79294Fe2Ea09Cac5c9b6F) | Deploys RentalAgreement instances |
-| RentalAgreement (V2 example) | [`0x26a1C334C57cAc0925723490Cb59586B391BD4D3`](https://sepolia.etherscan.io/address/0x26a1C334C57cAc0925723490Cb59586B391BD4D3) | Created via factory |
-| RentStreamToken | [`0xab660b16BB9af8E75fEF5Fc0A40F99f22Dd6988a`](https://sepolia.etherscan.io/address/0xab660b16BB9af8E75fEF5Fc0A40F99f22Dd6988a) | Linked to V2 agreement |
+| **PropertyNFT** | [`0x9AF296DA87Be1251964ab209C46B35672DC4808E`](https://sepolia.etherscan.io/address/0x9AF296DA87Be1251964ab209C46B35672DC4808E) | ERC-721 property titles |
+| **RentalHistory** | [`0xa4273A4CEAf340f986476462539e1d3B8276bc28`](https://sepolia.etherscan.io/address/0xa4273A4CEAf340f986476462539e1d3B8276bc28) | Immutable agreement records |
+| **RentChainFactory** | [`0x37C90213DD1712eDaCE79294Fe2Ea09Cac5c9b6F`](https://sepolia.etherscan.io/address/0x37C90213DD1712eDaCE79294Fe2Ea09Cac5c9b6F) | Deploys RentalAgreement instances |
+| **RentalAgreement (V2 example)** | [`0x26a1C334C57cAc0925723490Cb59586B391BD4D3`](https://sepolia.etherscan.io/address/0x26a1C334C57cAc0925723490Cb59586B391BD4D3) | Created via factory |
+| **RentStreamToken** | [`0xab660b16BB9af8E75fEF5Fc0A40F99f22Dd6988a`](https://sepolia.etherscan.io/address/0xab660b16BB9af8E75fEF5Fc0A40F99f22Dd6988a) | Linked to V2 agreement |
 | **RentalOracle** | [`0x598B526F0EB6de6b01A499e5B504964869CAbedA`](https://sepolia.etherscan.io/address/0x598B526F0EB6de6b01A499e5B504964869CAbedA) | Chainlink Functions inspection oracle |
-| LegalWrapper | [`0x9798Bd262856aFDA145CDF30c23354597Aa84734`](https://sepolia.etherscan.io/address/0x9798Bd262856aFDA145CDF30c23354597Aa84734) | IPFS lease anchoring |
-| MockArbitrator | [`0xde15d862E246CC8B289f00d589024774AAEcd580`](https://sepolia.etherscan.io/address/0xde15d862E246CC8B289f00d589024774AAEcd580) | Test arbitrator (Kleros on mainnet) |
-| KlerosResolver | [`0x28F87cBA77485e4eD1A8962c2E5f8F52a97118cE`](https://sepolia.etherscan.io/address/0x28F87cBA77485e4eD1A8962c2E5f8F52a97118cE) | Dispute → arbitration adapter |
+| **LegalWrapper** | [`0x9798Bd262856aFDA145CDF30c23354597Aa84734`](https://sepolia.etherscan.io/address/0x9798Bd262856aFDA145CDF30c23354597Aa84734) | IPFS lease anchoring |
+| **MockArbitrator** | [`0xde15d862E246CC8B289f00d589024774AAEcd580`](https://sepolia.etherscan.io/address/0xde15d862E246CC8B289f00d589024774AAEcd580) | Test arbitrator (Kleros on mainnet) |
+| **KlerosResolver** | [`0x28F87cBA77485e4eD1A8962c2E5f8F52a97118cE`](https://sepolia.etherscan.io/address/0x28F87cBA77485e4eD1A8962c2E5f8F52a97118cE) | Dispute → arbitration adapter |
+| **RentChainLending** | [`0x8B670193878DA75562C8A86AB938800A2e75cF17`](https://sepolia.etherscan.io/address/0x8B670193878DA75562C8A86AB938800A2e75cF17) | Collateralized lending pool |
+| **USDC (Sepolia)** | [`0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`](https://sepolia.etherscan.io/address/0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238) | Circle-issued test USDC |
 
 ### 🗄️ Legacy Deployments
 
@@ -403,12 +445,32 @@ cast send $AGREEMENT_V2 "setDisputeResolver(address)" $RESOLVER_V2 \
     --rpc-url $RPC_URL --private-key $PRIVATE_KEY
 ```
 
-## 🚀 V2 Upgrade Plan – Full RWA + ZK Feature Set
+### 15. RentChainLending
+
+```bash
+forge create src/RentChainLending.sol:RentChainLending \
+    --rpc-url $RPC_URL --private-key $PRIVATE_KEY \
+    --verify --etherscan-api-key $ETHERSCAN_API_KEY \
+    --broadcast \
+    --constructor-args $NFT_V2 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238
+# → $LENDING_V2
+
+
+# Approve USDC (get test USDC from https://faucet.circle.com/)
+cast send 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238 "approve(address,uint256)" $LENDING_V2 20000000 \
+    --rpc-url $RPC_URL --private-key $PRIVATE_KEY
+
+cast send $LENDING_V2 "fundPool(uint256)" 20000000 \
+    --rpc-url $RPC_URL --private-key $PRIVATE_KEY
+
+```
+
+## 🚀 Remaining Roadmap
 
 | Feature | Implementation |
 |---------|----------------|   
-| **DeFi Lending Integration** | `RentChainLending` – allows property owners to use Property NFTs as collateral for loans. |
-| **ZK Privacy Layer (Noir)** | Noir circuits for rental history, income, no disputes, KYC; off‑chain verification + signed attestations. |
+| **ZK Privacy Layer (Noir)** | Noir circuits for rental history, income, no disputes, KYC; off-chain verification + signed attestations. |
+| **Mina zkApp Implementation** | Parallel `o1js` implementation targeting Mina Builder Grants. |
 
 ## 🙏 Acknowledgements
 
