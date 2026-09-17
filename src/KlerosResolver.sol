@@ -28,9 +28,9 @@ contract KlerosResolver is IDisputeResolver, Ownable {
         bool resolved;
     }
 
-    mapping(address => Case) public cases;              // agreement => case
+    mapping(address => Case) public cases; // agreement => case
     mapping(uint256 => address) public disputeToAgreement; // arbitrator disputeId => agreement
-    mapping(uint256 => bool) public caseRuled;          // arbitrator disputeId => resolved
+    mapping(uint256 => bool) public caseRuled; // arbitrator disputeId => resolved
 
     event CaseOpened(address indexed agreement, uint256 indexed arbitratorDisputeId);
     event CaseResolved(address indexed agreement, bool tenantWins);
@@ -69,11 +69,7 @@ contract KlerosResolver is IDisputeResolver, Ownable {
         address tenantAddr = IArbitrableAgreement(agreement).tenant();
 
         cases[agreement] = Case({
-            agreement: agreement,
-            owner: ownerAddr,
-            tenant: tenantAddr,
-            arbitratorDisputeId: disputeId,
-            resolved: false
+            agreement: agreement, owner: ownerAddr, tenant: tenantAddr, arbitratorDisputeId: disputeId, resolved: false
         });
         disputeToAgreement[disputeId] = agreement;
 
@@ -120,7 +116,7 @@ contract KlerosResolver is IDisputeResolver, Ownable {
     function withdrawFees(address to, uint256 amount) external onlyOwner {
         require(amount <= feePool, "Insufficient pool");
         feePool -= amount;
-        (bool sent, ) = to.call{value: amount}("");
+        (bool sent,) = to.call{value: amount}("");
         require(sent, "Transfer failed");
         emit FeePoolWithdrawn(to, amount);
     }
