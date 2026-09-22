@@ -1,0 +1,4 @@
+identity_hash = "0x1234" 
+tenant_address = "0x1a8e692614f15925294c7c6bdcb4f5ade57b82c89a7fa07eb242eef39905d113"
+identity_commitment = "0x18cbcd0fab17bf2ca045fa44c23a6572274f41fe41f9b966b941b0423d44814f"
+secret_key = "0xabcdef"

@@ -1,0 +1,6 @@
+[package]
+name = "kYC_proof"
+type = "bin"
+authors = [""]
+
+[dependencies]

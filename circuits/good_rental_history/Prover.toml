@@ -1,0 +1,6 @@
+past_agreements = ["0x01", "0x02", "0x03", "0x04", "0x05"]
+outcomes = ["0x01", "0x01", "0x01", "0x01", "0x01"]
+secret_key = "0x00"
+tenant_address = "0xbeef"
+threshold = "0x05"
+merkle_root = "0x140dbf4d4fb390de1ecaf58f4079643eeda91606392b34cdbfdbbff9a860a9ce"

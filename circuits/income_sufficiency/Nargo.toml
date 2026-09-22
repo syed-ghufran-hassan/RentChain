@@ -1,0 +1,6 @@
+[package]
+name = "income_sufficiency"
+type = "bin"
+authors = [""]
+
+[dependencies]

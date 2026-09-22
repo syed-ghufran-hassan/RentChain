@@ -1,0 +1,4 @@
+dispute_commitment = "0x08988a2fbaa6c17ed3d0c29404ad237302972fd2535062ebb23ec3a78e590785"
+dispute_flags = ["0", "0", "0", "0", "0", "0", "0", "0", "0", "0"]
+secret_key = "12345"
+tenant_address = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
