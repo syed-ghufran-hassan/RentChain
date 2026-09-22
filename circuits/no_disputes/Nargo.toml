@@ -1,0 +1,6 @@
+[package]
+name = "no_disputes"
+type = "bin"
+authors = [""]
+
+[dependencies]

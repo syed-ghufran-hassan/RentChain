@@ -1,14 +1,65 @@
-# Compiler files
-cache/
+# ─────────────────────────────────────────────
+# Foundry
+# ─────────────────────────────────────────────
 out/
+cache/
+broadcast/
+forge-cache/
 
-# Ignores development broadcast logs
-!/broadcast
-/broadcast/*/31337/
-/broadcast/**/dry-run/
-
-# Docs
-docs/
-
-# Dotenv file
+# Foundry deploy/verify secrets
 .env
+.env.*
+!.env.example
+
+# ─────────────────────────────────────────────
+# Noir / Nargo
+# ─────────────────────────────────────────────
+target/
+**/target/
+nargo-*.log
+
+# Nargo local config (may contain paths/rpc)
+.nargo/
+
+# ─────────────────────────────────────────────
+# Proof artifacts (regenerate from circuit + inputs)
+# ─────────────────────────────────────────────
+# These are the outputs of `bb prove` / `bb write_vk`.
+# If a specific proof needs to be checked in (e.g. test
+# fixtures), un-ignore it explicitly.
+**/target/proof
+**/target/public_inputs
+**/target/vk
+**/target/*.gz
+**/target/*.json
+
+# ─────────────────────────────────────────────
+# Barretenberg / SRS
+# ─────────────────────────────────────────────
+# SRS files are large (~100MB) and re-downloadable.
+.bb-crs/
+bb-crs/
+*.dat
+
+# ─────────────────────────────────────────────
+# Editor / OS
+# ─────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ─────────────────────────────────────────────
+# Node (if you add a JS/TS client later)
+# ─────────────────────────────────────────────
+node_modules/
+dist/
+*.tsbuildinfo
+
+# ─────────────────────────────────────────────
+# Logs / temp
+# ─────────────────────────────────────────────
+*.log
+*.tmp

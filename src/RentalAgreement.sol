@@ -7,6 +7,10 @@ import "./interfaces/IPropertyNFT.sol";
 import "./interfaces/IDisputeResolver.sol";
 import "./interfaces/IRentStreamToken.sol";
 
+interface IZKAttestation {
+    function isVerified(address tenant, bytes32 proofType) external view returns (bool);
+}
+
 contract RentalAgreement is ReentrancyGuard {
     enum State {
         Created,
@@ -36,6 +40,9 @@ contract RentalAgreement is ReentrancyGuard {
 
     uint256 public propertyNFTId;
     IPropertyNFT public propertyNFT;
+    IZKAttestation public zkAttestation;
+
+    bytes32 public constant GOOD_HISTORY_PROOF = keccak256("good_history");
 
     uint256 public constant DISPUTE_WINDOW = 7 days;
     uint256 public depositReleaseDeadline;
@@ -56,6 +63,7 @@ contract RentalAgreement is ReentrancyGuard {
     event DisputeFinalized(address indexed caller, bool tenantWins);
     event OracleSet(address indexed oracle);
     event OracleReleasedDeposit(address indexed recipient, uint256 amount);
+    event ZKAttestationSet(address indexed attestation);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Not owner");
@@ -129,6 +137,15 @@ contract RentalAgreement is ReentrancyGuard {
     function signAsTenant() external payable onlyTenant {
         require(state == State.Created || state == State.OwnerSigned, "Cannot sign now");
         require(msg.value == depositAmount, "Must send exact deposit amount");
+
+        // Optional ZK gate — only enforced if an attestation contract is set
+        if (address(zkAttestation) != address(0)) {
+            require(
+                zkAttestation.isVerified(msg.sender, GOOD_HISTORY_PROOF),
+                "ZK attestation required"
+            );
+        }
+
         depositHeld += msg.value;
 
         if (state == State.Created) {
@@ -290,6 +307,14 @@ contract RentalAgreement is ReentrancyGuard {
         rentStreamToken = _token;
     }
 
+    /// @notice Owner sets the ZK attestation contract before signing.
+    ///         Optional — if left as address(0), no ZK gate is applied.
+    function setZKAttestation(address _attestation) external onlyOwner {
+        require(state == State.Created, "Frozen after signing");
+        zkAttestation = IZKAttestation(_attestation);
+        emit ZKAttestationSet(_attestation);
+    }
+
     // ---------- Oracle Release ----------
     /// @notice Called by the oracle after a successful off-chain inspection.
     ///         Releases the deposit to the tenant without waiting for the
@@ -320,4 +345,3 @@ contract RentalAgreement is ReentrancyGuard {
         return state;
     }
 }
-

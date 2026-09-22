@@ -1,0 +1,6 @@
+[package]
+name = "good_rental_history"
+type = "bin"
+authors = [""]
+
+[dependencies]
