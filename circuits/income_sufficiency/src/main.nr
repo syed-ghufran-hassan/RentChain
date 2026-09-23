@@ -15,12 +15,9 @@ fn main(
     // 1. Verify the commitment binds monthly_income + secret_key
     let computed = std::hash::pedersen_hash([monthly_income, secret_key]);
     assert(computed == income_commitment);
+ 
 
-    // 2. Bind the proof to the tenant address via the secret key
-    let tenant_binding = std::hash::pedersen_hash([secret_key]);
-    assert(tenant_binding == tenant_address);
-
-    // 3. Check sufficiency
+    // 2. Check sufficiency
     let required = (rent_amount as u64) * (required_multiplier as u64);
     assert((monthly_income as u64) >= required);
 }

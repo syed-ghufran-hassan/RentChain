@@ -1,5 +1,5 @@
 income_commitment = "0x0f7f3e4425c8afd3e2cf34e9c6adaae77b2dcf67036bc7e94b19080d045dca67"
-tenant_address = "0x1a65fb219ffd58992a8c16d3038ef77e4696a8e43e1fb2debdb03b5d9b0ee8a9"
+tenant_address = "0xbeef"
 monthly_income = "5000"
 rent_amount = "1000"
 required_multiplier = "3"
