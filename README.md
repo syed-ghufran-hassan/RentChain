@@ -21,12 +21,13 @@
 - **Oracle‑Assisted Deposit Release** – A Chainlink Functions oracle can release the deposit early when an off-chain inspection passes. Cannot override an open dispute.
 - **Legal Wrapper + DAO Arbitration** – Each agreement's signed lease is anchored on-chain via IPFS hash and jurisdiction. Disputes escalate to a Kleros-compatible arbitrator that rules on the deposit release.
 - **DeFi Lending** – Property owners can use `PropertyNFT` as collateral to borrow stablecoins. Loans accrue 10% APR; positions above the 75% liquidation threshold can be liquidated by anyone.
+- **Zero-Knowledge Tenant Screening (Noir)** – Tenants prove eligibility on-chain without revealing raw data. Four UltraHonk circuits (`good_rental_history`, `income_sufficiency`, `kYC_proof`, `no_disputes`) generate proofs off-chain; `ZKAttestation` verifies them on-chain and records a per-tenant attestation. `RentalAgreement.signAsTenant()` is gated on a valid `good_history` proof — no trusted signer, no ECDSA. *(Sepolia deployment deferred — see Known Limitations.)*
 
 ---
 
 ## 🏗️ Architecture
 
-The system consists of eight core contracts:
+The system consists of fourteen core contracts:
 
 | Contract | Purpose |
 |----------|---------|
@@ -39,6 +40,12 @@ The system consists of eight core contracts:
 | **LegalWrapper** | Anchors signed lease documents (IPFS hash + jurisdiction) to each agreement and tracks escalation status. |
 | **KlerosResolver** | Implements `IDisputeResolver`. Opens a Kleros arbitration on dispute; on ruling, calls `RentalAgreement.resolveDispute(bool)`. |
 | **RentChainLending** | Collateralized lending pool. Accepts `PropertyNFT` as collateral, lends stablecoins up to a 50% LTV, and liquidates positions above the 75% liquidation threshold. |
+| **ZKAttestation** | Verifies UltraHonk proofs on-chain, records per-tenant attestations, exposes `isVerified(tenant, proofType)`. |
+| **GoodRentalHistoryVerifier** | `bb`-generated Solidity verifier for the `good_rental_history` circuit. |
+| **IncomeSufficiencyVerifier** | `bb`-generated verifier for `income_sufficiency`. |
+| **KYCProofVerifier** | `bb`-generated verifier for `kYC_proof`. |
+| **NoDisputesVerifier** | `bb`-generated verifier for `no_disputes`. |
+> **ZK note:** the four UltraHonk verifiers (`GoodRentalHistoryVerifier`, `IncomeSufficiencyVerifier`, `KYCProofVerifier`, `NoDisputesVerifier`) are compiled and tested, but exceed Ethereum's EIP-170 code-size limit at ~33 KB each. See *Known Limitations*.
 
 ## 🔄 Rental Lifecycle
 
@@ -170,6 +177,11 @@ Property owners can unlock liquidity without selling by borrowing against their 
 | Withdraw while loan is active | `"Loan still active"` |
 | Liquidate a healthy loan | `"Not liquidatable"` |
 | Liquidate with insufficient USDC | `"Payment failed"` |
+| Tenant signs without a `good_history` attestation | `"ZK attestation required"` |
+| Attestation submitted with a proof bound to a different address | `"Proof not bound to sender"` |
+| Attestation submitted with an invalid or stale proof | `"Invalid proof"` |
+| Attestation submitted after its expiry | `"Already expired"` |
+| Owner sets ZK attestation after signing | `"Frozen after signing"` |
 
 ## Foundry
 
@@ -205,6 +217,9 @@ $ forge test --match-contract LegalWrapperTest -vv
 $ forge test --match-contract KlerosResolverTest -vv
 $ forge test --match-contract RentalOracleTest -vv
 $ forge test --match-contract RentChainLendingTest -vv
+$ forge test --match-pattern "Verify.*Test" -vv          # standalone verifier tests (4)
+$ forge test --match-contract ZKAttestationE2ETest -vv   # submitAttestation per proof type (4)
+$ forge test --match-contract RentalAgreementZKGateTest -vv  # gate reverts/succeeds (2)
 
 ```
 
@@ -275,6 +290,24 @@ $ cast --help
 - [x] 50% LTV; 75% liquidation threshold; 10% APR; 10% liquidation penalty.
 - [x] `borrow`, `repay`, `withdrawCollateral`, `liquidate` all implemented.
 - [x] 11 unit tests + Anvil E2E verified.
+
+### ✅ Phase 6: ZK Privacy Layer — Circuits & Verification (Completed)
+
+**Circuits (Noir + UltraHonk):**
+- [x] Four circuits: `good_rental_history`, `income_sufficiency`, `kYC_proof`, `no_disputes`.
+- [x] Compile, witness, and prove via `nargo` + `bb` (`--oracle_hash keccak`).
+- [x] Unit tests in each circuit (passing).
+
+**On-chain verification layer:**
+- [x] Four Solidity verifiers generated with `bb write_solidity_verifier`.
+- [x] `ZKAttestation` verifies proofs on-chain and records per-tenant attestations.
+- [x] Replaced the earlier ECDSA trusted-signer model with cryptographic proof verification.
+- [x] Sender binding via `publicInputs[0] == msg.sender`.
+- [x] `RentalAgreement.signAsTenant()` gated on a valid `good_history` attestation.
+- [x] 4 verifier tests + 4 E2E tests through `ZKAttestation` + gate integration test (all passing).
+
+**⚠️ Sepolia deployment status: NOT DEPLOYED — EIP-170 code-size limit.**
+See the *Known Limitations* section below. All Phase 6 functionality is verified locally and via Foundry tests; on-chain deployment on Ethereum Sepolia is blocked by the verifier contract size. This is a platform constraint, not a bug in the implementation.
 
 ## 📋 Deployed Contracts (Sepolia)
 
@@ -465,11 +498,45 @@ cast send $LENDING_V2 "fundPool(uint256)" 20000000 \
 
 ```
 
+## ⚠️ Known Limitations
+
+### ZK Verifiers exceed EIP-170 on Ethereum Sepolia
+
+The four UltraHonk verifier contracts generated by `bb write_solidity_verifier` exceed Ethereum's **EIP-170 contract code-size limit of 24,576 bytes**.
+
+- Each generated verifier compiles to roughly **33–35 KB** of deployed bytecode.
+- Locally (`forge test`, `anvil`), this is not enforced, so all Phase 6 tests pass.
+- On Ethereum Sepolia, deployment reverts with `CreateContractSizeLimit`.
+
+**Why the verifier is large:** the generated contract contains the full UltraHonk verification algorithm — sumcheck, Shplemini, KZG, transcript hashing, and field arithmetic — plus the embedded verification key (`HonkVerificationKey.loadVerificationKey()`). All of this compiles into a single contract.
+
+**What this means for Phase 6:**
+
+| Layer | Status |
+|-------|--------|
+| Noir circuits | ✅ Complete |
+| Off-chain proof generation | ✅ Complete |
+| Solidity verifiers (compiled) | ✅ Complete |
+| `ZKAttestation` + `RentalAgreement` gate | ✅ Complete |
+| Verifier tests + E2E tests | ✅ Complete (local) |
+| On-chain verification on Ethereum Sepolia | ❌ Blocked by EIP-170 |
+
+**Workarounds considered:**
+
+1. **Library split** — Move `ZKTranscriptLib` (the largest internal library) into a separately deployed contract and link at deploy time. This brings the main verifier under the 24 KB limit. Requires editing the `bb`-generated Solidity to change library function visibility from `internal` to `external`, which must be reapplied on every regeneration. Documented as a viable path; not implemented in this version.
+
+2. **Deploy on an L2** — Base Sepolia, Arbitrum Sepolia, and Optimism Sepolia do not enforce EIP-170 at the sequencer. The same Solidity deploys without modification. Recommended for a live demo; not done here to keep all phases on the same network.
+
+3. **Newer `bb` with `--optimized` flag** — Newer Aztec packages releases include an `--optimized` flag for `write_solidity_verifier` that generates a gas-optimized, assembly-based verifier. Not available in `bb 0.87.0` (the version compatible with `nargo 1.0.0-beta.12`). Upgrading would require regenerating all four circuits, VKs, and verifiers.
+
+**Decision:** Phase 6 is complete as a *verification layer* — circuits, proofs, on-chain verifier contracts, `ZKAttestation`, and the `RentalAgreement` gate all work and are fully tested. The Sepolia deployment is deferred because the platform cannot host the generated verifier contracts within code-size limits. This is documented here for transparency rather than hidden.
+
 ## 🚀 Remaining Roadmap
 
 | Feature | Implementation |
-|---------|----------------|   
-| **ZK Privacy Layer (Noir)** | Noir circuits for rental history, income, no disputes, KYC; off-chain verification + signed attestations. |
+|---------|----------------|
+| **ZK verifier deployment (EIP-170 workaround)** | Split `ZKTranscriptLib` into an external library so the verifier fits under 24 KB, then deploy the full ZK stack to Ethereum Sepolia. Alternatively, deploy on Base Sepolia or Arbitrum Sepolia. |
+| **Browser-side proving** | Replace the `nargo`/`bb` CLI flow with `@noir-lang/noir_js` + `@aztec/bb.js` so tenants can generate proofs from a web app. |
 | **Mina zkApp Implementation** | Parallel `o1js` implementation targeting Mina Builder Grants. |
 
 ## 🙏 Acknowledgements
